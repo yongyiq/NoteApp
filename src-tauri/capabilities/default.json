@@ -1,0 +1,39 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-capability",
+  "description": "主窗口权限配置 — FS 读写 + DevTools",
+  "windows": ["main"],
+  "permissions": [
+    "dialog:default",
+    "dialog:allow-message",
+    "dialog:allow-confirm",
+    "dialog:allow-ask",
+    "core:default",
+    "core:webview:default",
+    "core:webview:allow-internal-toggle-devtools",
+    "fs:default",
+    "fs:allow-read-text-file",
+    "fs:allow-write-text-file",
+    "fs:allow-exists",
+    "fs:allow-mkdir",
+    "fs:allow-rename",
+    "fs:allow-remove",
+    "fs:allow-read-dir",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        { "path": "$APPDATA" },
+        { "path": "$APPDATA/**" },
+        { "path": "$HOME" },
+        { "path": "$HOME/**" },
+        { "path": "$DESKTOP" },
+        { "path": "$DESKTOP/**" },
+        { "path": "$DOCUMENT" },
+        { "path": "$DOCUMENT/**" },
+        { "path": "$DOWNLOAD" },
+        { "path": "$DOWNLOAD/**" }
+      ],
+      "deny": []
+    }
+  ]
+}

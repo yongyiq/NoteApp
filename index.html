@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NoteFlow — 智能笔记</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="stylesheet" href="style.css?v=20260507">
+  <!-- marked.js for Markdown rendering (local) -->
+  <script src="lib/marked/marked.min.js"></script>
+  <!-- highlight.js for code highlighting (local browser version) -->
+  <link rel="stylesheet" href="lib/highlight/github.min.css" id="hljs-theme">
+  <script src="lib/highlight/highlight.min.js"></script>
+  <script src="lib/highlight/javascript.min.js"></script>
+  <script src="lib/highlight/python.min.js"></script>
+  <script src="lib/highlight/css.min.js"></script>
+  <script src="lib/highlight/xml.min.js"></script>
+  <script src="lib/highlight/bash.min.js"></script>
+  <script src="lib/highlight/json.min.js"></script>
+  <script src="lib/highlight/typescript.min.js"></script>
+</head>
+<body>
+
+<!-- ==================== APP SHELL ==================== -->
+<div id="app">
+
+  <!-- TOP BAR -->
+  <header id="topbar">
+    <div class="topbar-left">
+      <button id="btn-toggle-sidebar" class="icon-btn" title="切换侧边栏">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+          <rect x="2" y="4" width="16" height="12" rx="2"/>
+          <line x1="7" y1="4" x2="7" y2="16"/>
+        </svg>
+      </button>
+      <span class="app-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14,2 14,8 20,8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+          <polyline points="10,9 9,9 8,9"/>
+        </svg>
+        NoteFlow
+      </span>
+    </div>
+    <div class="topbar-center">
+      <span id="current-file-name" class="file-badge">未打开文件</span>
+      <span id="save-status" class="save-status"></span>
+    </div>
+    <div class="topbar-right">
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" width="14" height="14">
+          <circle cx="8.5" cy="8.5" r="5.5"/>
+          <line x1="13" y1="13" x2="17" y2="17"/>
+        </svg>
+        <input type="text" id="search-input" placeholder="搜索笔记..." />
+      </div>
+      <button id="btn-theme" class="icon-btn" title="切换主题">
+        <svg id="icon-sun" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+          <circle cx="10" cy="10" r="4"/>
+          <line x1="10" y1="2" x2="10" y2="4"/>
+          <line x1="10" y1="16" x2="10" y2="18"/>
+          <line x1="2" y1="10" x2="4" y2="10"/>
+          <line x1="16" y1="10" x2="18" y2="10"/>
+          <line x1="4.2" y1="4.2" x2="5.6" y2="5.6"/>
+          <line x1="14.4" y1="14.4" x2="15.8" y2="15.8"/>
+          <line x1="4.2" y1="15.8" x2="5.6" y2="14.4"/>
+          <line x1="14.4" y1="5.6" x2="15.8" y2="4.2"/>
+        </svg>
+        <svg id="icon-moon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" style="display:none">
+          <path d="M17 11.5A7 7 0 0 1 8.5 3a7 7 0 1 0 8.5 8.5z"/>
+        </svg>
+      </button>
+      <button id="btn-cloud-sync" class="icon-btn" title="云同步设置">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M5 12a5 5 0 0 1 9.5-2.2A4 4 0 1 1 13 16H7a4 4 0 0 1-2-7.8z"/>
+        </svg>
+      </button>
+      <button id="btn-storage-settings" class="icon-btn" title="存储位置设置">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="3" y="5" width="14" height="10" rx="1.5"/>
+          <circle cx="10" cy="10" r="2.2"/>
+          <line x1="3" y1="8" x2="7" y2="8"/>
+          <line x1="13" y1="8" x2="17" y2="8"/>
+        </svg>
+      </button>
+      <button id="btn-minio-settings" class="icon-btn" title="MinIO 图片存储">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="4" y="4" width="12" height="12" rx="2"/>
+          <path d="M7 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/>
+          <line x1="7" y1="9" x2="13" y2="9"/>
+          <line x1="7" y1="12" x2="11" y2="12"/>
+        </svg>
+      </button>
+      <button id="btn-new-note" class="icon-btn primary-btn" title="新建笔记">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+          <line x1="10" y1="4" x2="10" y2="16"/>
+          <line x1="4" y1="10" x2="16" y2="10"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN LAYOUT -->
+  <div id="main-layout">
+
+    <!-- SIDEBAR -->
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-title">我的笔记</span>
+        <div class="sidebar-actions">
+          <button class="icon-btn small" id="btn-new-folder" title="新建文件夹">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M3 5a2 2 0 0 1 2-2h3.5l2 2H16a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5z"/>
+              <line x1="10" y1="9" x2="10" y2="14"/>
+              <line x1="7.5" y1="11.5" x2="12.5" y2="11.5"/>
+            </svg>
+          </button>
+          <button class="icon-btn small" id="btn-import" title="导入文件">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M17 13v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2"/>
+              <polyline points="7,8 10,11 13,8"/>
+              <line x1="10" y1="11" x2="10" y2="3"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div id="file-list"></div>
+      <div id="sidebar-empty" class="empty-hint" style="display:none">
+        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40">
+          <rect x="10" y="6" width="28" height="36" rx="3"/>
+          <line x1="16" y1="16" x2="32" y2="16"/>
+          <line x1="16" y1="22" x2="28" y2="22"/>
+          <line x1="16" y1="28" x2="24" y2="28"/>
+        </svg>
+        <p>暂无笔记<br><small>点击 + 创建第一篇</small></p>
+      </div>
+    </aside>
+
+    <!-- EDITOR AREA -->
+    <main id="editor-area">
+
+      <!-- EDITOR TOOLBAR -->
+      <div id="editor-toolbar" style="display:none">
+        <div class="toolbar-group">
+          <button class="tb-btn" data-action="bold" title="粗体 (Ctrl+B)"><strong>B</strong></button>
+          <button class="tb-btn" data-action="italic" title="斜体 (Ctrl+I)"><em>I</em></button>
+          <button class="tb-btn" data-action="strike" title="删除线"><s>S</s></button>
+          <button class="tb-btn" data-action="code" title="行内代码">&lt;/&gt;</button>
+        </div>
+        <div class="toolbar-sep"></div>
+        <div class="toolbar-group">
+          <button class="tb-btn" data-action="h1" title="标题 1">H1</button>
+          <button class="tb-btn" data-action="h2" title="标题 2">H2</button>
+          <button class="tb-btn" data-action="h3" title="标题 3">H3</button>
+        </div>
+        <div class="toolbar-sep"></div>
+        <div class="toolbar-group">
+          <button class="tb-btn" data-action="ul" title="无序列表">≡</button>
+          <button class="tb-btn" data-action="ol" title="有序列表">1.</button>
+          <button class="tb-btn" data-action="quote" title="引用">"</button>
+          <button class="tb-btn" data-action="hr" title="分割线">—</button>
+          <button class="tb-btn" data-action="table" title="表格">⊞</button>
+          <button class="tb-btn" data-action="link" title="链接">⧉</button>
+          <button class="tb-btn" data-action="image" title="插入图片">!</button>
+          <button class="tb-btn" data-action="codeblock" title="代码块">{ }</button>
+        </div>
+        <div class="toolbar-sep"></div>
+        <div class="toolbar-group mode-group">
+          <button class="tb-btn mode-btn active" id="btn-edit-mode" title="编辑模式">编辑</button>
+          <button class="tb-btn mode-btn" id="btn-split-mode" title="分屏模式">分屏</button>
+          <button class="tb-btn mode-btn" id="btn-preview-mode" title="预览模式">预览</button>
+        </div>
+        <div class="toolbar-flex"></div>
+        <div class="toolbar-group">
+          <button class="tb-btn save-btn" id="btn-save" title="保存 (Ctrl+S)">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13">
+              <path d="M13 13H3a1 1 0 0 1-1-1V4l3-3h8a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1z"/>
+              <path d="M5 1v4h7"/>
+              <rect x="5" y="8" width="6" height="5" rx="0.5"/>
+            </svg>
+            保存
+          </button>
+        </div>
+      </div>
+
+      <!-- EDITOR CONTENT -->
+      <div id="editor-content">
+        <div id="welcome-screen">
+          <div class="welcome-inner">
+            <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.5" width="56" height="56">
+              <rect x="8" y="6" width="48" height="52" rx="4"/>
+              <line x1="18" y1="22" x2="46" y2="22"/>
+              <line x1="18" y1="30" x2="46" y2="30"/>
+              <line x1="18" y1="38" x2="36" y2="38"/>
+              <path d="M42 46l6 6 10-10" stroke-width="2"/>
+            </svg>
+            <h2>NoteFlow</h2>
+            <p>智能笔记 · 支持 Markdown 与 PDF</p>
+            <div class="welcome-actions">
+              <button class="welcome-btn primary" id="btn-welcome-new">新建笔记</button>
+              <button class="welcome-btn" id="btn-welcome-import">导入文件</button>
+            </div>
+            <div class="welcome-tips">
+              <div class="tip-item">
+                <span class="tip-key">Ctrl+S</span> 保存
+              </div>
+              <div class="tip-item">
+                <span class="tip-key">Ctrl+B</span> 粗体
+              </div>
+              <div class="tip-item">
+                <span class="tip-key">Ctrl+/</span> 切换预览
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MARKDOWN EDITOR (split) -->
+        <div id="md-container" style="display:none">
+          <div id="md-editor-wrap">
+            <textarea id="md-editor" spellcheck="false" placeholder="开始书写..."></textarea>
+            <div id="editor-footer">
+              <span id="word-count">0 字</span>
+              <span id="cursor-pos">第 1 行，第 1 列</span>
+            </div>
+          </div>
+          <div id="md-preview-wrap" style="display:none">
+            <div id="md-preview" class="markdown-body"></div>
+          </div>
+        </div>
+
+        <!-- PDF VIEWER -->
+        <div id="pdf-container" style="display:none">
+          <div class="pdf-toolbar">
+            <button class="icon-btn small" id="pdf-prev" title="上一页">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+                <polyline points="10,4 6,8 10,12"/>
+              </svg>
+            </button>
+            <span id="pdf-page-info">第 <input type="number" id="pdf-page-input" value="1" min="1"> 页 / <span id="pdf-total">—</span> 页</span>
+            <button class="icon-btn small" id="pdf-next" title="下一页">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+                <polyline points="6,4 10,8 6,12"/>
+              </svg>
+            </button>
+            <div class="toolbar-sep"></div>
+            <button class="icon-btn small" id="pdf-zoom-out" title="缩小">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+                <circle cx="7" cy="7" r="5"/>
+                <line x1="5" y1="7" x2="9" y2="7"/>
+                <line x1="12" y1="12" x2="15" y2="15"/>
+              </svg>
+            </button>
+            <span id="pdf-zoom-level">100%</span>
+            <button class="icon-btn small" id="pdf-zoom-in" title="放大">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+                <circle cx="7" cy="7" r="5"/>
+                <line x1="5" y1="7" x2="9" y2="7"/>
+                <line x1="7" y1="5" x2="7" y2="9"/>
+                <line x1="12" y1="12" x2="15" y2="15"/>
+              </svg>
+            </button>
+            <button class="icon-btn small" id="pdf-fit" title="适应宽度">适宽</button>
+          </div>
+          <div id="pdf-viewer-wrap">
+            <canvas id="pdf-canvas"></canvas>
+          </div>
+        </div>
+
+        <!-- IMAGE VIEWER -->
+        <div id="img-container" style="display:none">
+          <div class="img-toolbar">
+            <button class="icon-btn small" id="img-zoom-out" title="缩小">−</button>
+            <span id="img-zoom-level">100%</span>
+            <button class="icon-btn small" id="img-zoom-in" title="放大">+</button>
+            <button class="icon-btn small" id="img-fit" title="适应窗口">适应</button>
+          </div>
+          <div id="img-viewer-wrap">
+            <img id="img-viewer" alt="图片预览">
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- MODALS -->
+<div id="modal-overlay" style="display:none">
+  <div id="modal-box">
+    <div id="modal-header">
+      <span id="modal-title"></span>
+      <button class="icon-btn small" id="modal-close">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+          <line x1="4" y1="4" x2="12" y2="12"/>
+          <line x1="12" y1="4" x2="4" y2="12"/>
+        </svg>
+      </button>
+    </div>
+    <div id="modal-body"></div>
+    <div id="modal-footer"></div>
+  </div>
+</div>
+
+<!-- SYNC PANEL -->
+<div id="sync-panel" style="display:none">
+  <div class="sync-panel-header">
+    <span class="sync-panel-title">☁️ 云同步设置</span>
+    <button class="icon-btn small" id="sync-panel-close">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+        <line x1="4" y1="4" x2="12" y2="12"/>
+        <line x1="12" y1="4" x2="4" y2="12"/>
+      </svg>
+    </button>
+  </div>
+  <div class="sync-panel-body">
+    <div class="sync-field">
+      <label>Gitee 私人令牌 (Token)</label>
+      <input type="password" id="sync-token" placeholder="输入 Gitee Access Token" />
+      <button class="sync-btn small" id="btn-test-token">测试连接</button>
+    </div>
+    <div class="sync-field">
+      <label>Gitee 用户名</label>
+      <input type="text" id="sync-owner" placeholder="你的 Gitee 用户名" />
+    </div>
+    <div class="sync-field">
+      <label>仓库名称</label>
+      <input type="text" id="sync-repo" placeholder="存放笔记的仓库名" />
+    </div>
+    <div class="sync-actions">
+      <button class="sync-btn primary" id="btn-save-sync">保存配置</button>
+      <button class="sync-btn" id="btn-sync-upload">☁️ 推送笔记</button>
+      <button class="sync-btn" id="btn-sync-download">⬇️ 拉取笔记</button>
+    </div>
+    <div id="sync-log" class="sync-log"></div>
+  </div>
+</div>
+
+<!-- STORAGE SETTINGS PANEL -->
+<div id="storage-panel" style="display:none">
+  <div class="sync-panel-header">
+    <span class="sync-panel-title">💾 存储位置设置</span>
+    <button class="icon-btn small" id="storage-panel-close">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+        <line x1="4" y1="4" x2="12" y2="12"/>
+        <line x1="12" y1="4" x2="4" y2="12"/>
+      </svg>
+    </button>
+  </div>
+  <div class="sync-panel-body">
+    <div class="sync-field">
+      <label>当前数据目录</label>
+      <div id="storage-current-dir" style="padding:8px 10px;background:var(--bg-secondary);border:1px solid var(--border-medium);border-radius:6px;font-size:12px;word-break:break-all;color:var(--text-secondary);min-height:36px;">加载中...</div>
+    </div>
+    <div class="sync-field">
+      <label>默认目录</label>
+      <div id="storage-default-dir" style="padding:8px 10px;background:var(--bg-secondary);border:1px solid var(--border-medium);border-radius:6px;font-size:12px;word-break:break-all;color:var(--text-secondary);min-height:36px;">加载中...</div>
+    </div>
+    <div class="sync-actions">
+      <button class="sync-btn primary" id="btn-select-storage-dir">📂 选择新目录</button>
+      <button class="sync-btn" id="btn-reset-storage-dir">🔄 恢复默认</button>
+    </div>
+    <div id="storage-log" class="sync-log" style="margin-top:14px"></div>
+    <div style="margin-top:14px;padding:10px;background:var(--bg-secondary);border-radius:6px;font-size:12px;line-height:1.7;color:var(--text-secondary)">
+      <strong>说明：</strong><br>
+      · 更改存储位置后，新笔记将保存到新目录<br>
+      · 建议手动将旧目录中的文件复制到新目录<br>
+      · 恢复默认将使用系统 AppData 目录
+    </div>
+  </div>
+</div>
+
+<!-- MINIO SETTINGS PANEL -->
+<div id="minio-panel" style="display:none">
+  <div class="sync-panel-header">
+    <span class="sync-panel-title">📦 MinIO 图片存储</span>
+    <button class="icon-btn small" id="minio-panel-close">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+        <line x1="4" y1="4" x2="12" y2="12"/>
+        <line x1="12" y1="4" x2="4" y2="12"/>
+      </svg>
+    </button>
+  </div>
+  <div class="sync-panel-body">
+    <div style="margin-bottom:12px;font-size:12px;color:var(--text-secondary);line-height:1.6">
+      将图片上传到自建 MinIO，Markdown 中直接嵌入公开 URL，无需同步附件文件。
+    </div>
+    <div class="sync-field">
+      <label>
+        <input type="checkbox" id="minio-enabled" style="margin-right:6px">
+        启用 MinIO 图片存储
+      </label>
+    </div>
+    <div class="sync-field">
+      <label>Endpoint（ngrok URL）</label>
+      <input id="minio-endpoint" type="text"
+        placeholder="https://xxx.ngrok-free.app"
+        value="https://pedometer-dweller-encounter.ngrok-free.dev">
+    </div>
+    <div class="sync-field">
+      <label>Bucket 名称</label>
+      <input id="minio-bucket" type="text"
+        placeholder="noteflow-images" value="noteflow-images">
+    </div>
+    <div class="sync-field">
+      <label>Access Key</label>
+      <input id="minio-access-key" type="text" placeholder="minioadmin">
+    </div>
+    <div class="sync-field">
+      <label>Secret Key</label>
+      <input id="minio-secret-key" type="password" placeholder="minioadmin">
+    </div>
+    <div class="sync-field">
+      <label>Region</label>
+      <input id="minio-region" type="text" placeholder="us-east-1" value="us-east-1">
+    </div>
+    <div class="sync-actions">
+      <button class="sync-btn primary" id="minio-test-btn">🔗 测试连接</button>
+      <button class="sync-btn" id="minio-save-btn">💾 保存配置</button>
+    </div>
+    <div id="minio-log" class="sync-log" style="margin-top:14px"></div>
+  </div>
+</div>
+
+<!-- CONTEXT MENU -->
+<div id="context-menu" style="display:none">
+  <ul id="context-list"></ul>
+</div>
+
+<!-- TOAST -->
+<div id="toast-container"></div>
+
+<!-- HIDDEN FILE INPUT -->
+<input type="file" id="file-input" style="display:none" accept=".md,.txt,.pdf,.png,.jpg,.jpeg,.gif,.webp,.svg">
+<input type="file" id="insert-image-input" style="display:none" accept="image/*">
+
+<script>
+  // Web 端适配层：非 Tauri 环境下加载 web-storage.js
+  if (!window.__TAURI__) {
+    document.write('<script src="web-storage.js"><\/script>');
+  }
+</script>
+<script src="app.js?v=20260508"></script>
+</body>
+</html>

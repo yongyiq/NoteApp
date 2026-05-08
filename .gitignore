@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Tauri build artifacts
+src-tauri/target/
+
+# WorkBuddy
+.workbuddy/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Backup
+*_backup_*/
+
+NoteApp.rar
