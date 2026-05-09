@@ -803,7 +803,10 @@ function openNote(id) {
         const base64 = ev.target.result.split(',')[1];
         if (isMinioEnabled()) {
           toast('正在上传图片到 MinIO...', 'info');
-          uploadImageToMinio(noteId, file.name, base64, file.type)
+          // 使用安全文件名，避免中文/特殊字符导致 S3 签名失败
+          const imgExt = (file.name.split('.').pop() || 'png').toLowerCase();
+          const safeImgName = Date.now() + '_' + Math.random().toString(36).slice(2, 6) + '.' + imgExt;
+          uploadImageToMinio(noteId, safeImgName, base64, file.type)
             .then(url => {
               insertTextAtCursor(`![${file.name}](${url})`);
               toast('图片已上传到 MinIO ✓', 'success');
@@ -1158,7 +1161,9 @@ function openNote(id) {
         // 上传 PDF 到 MinIO，content 存储 URL
         try {
           toast('正在上传 PDF 到 MinIO...', 'info');
-          pdfContentUrl = await uploadImageToMinio(id, name, base64, 'application/pdf');
+         // 使用安全文件名（时间戳+扩展名），避免中文/特殊字符导致 S3 签名失败
+          const safeFilename = Date.now() + '_' + Math.random().toString(36).slice(2, 6) + '.' + ext;
+          pdfContentUrl = await uploadImageToMinio(id, safeFilename, base64, 'application/pdf');
           toast('PDF 已上传到 MinIO', 'success');
         } catch (e) {
           console.error('MinIO PDF 上传失败，回退到本地存储:', e);
