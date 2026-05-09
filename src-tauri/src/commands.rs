@@ -410,12 +410,17 @@ pub fn export_all_data(app: AppHandle) -> Result<String, String> {
             Err(_) => continue,
         };
 
-        // PDF/图片：读取 .bin 文件，base64 编码后放入 content
+        // PDF/图片：如果 content 已经是 MinIO URL，直接保留（不再读 .bin）
+        // 否则读取 .bin 文件，base64 编码后放入 content（兼容旧数据）
         if !is_text_type(&note.note_type) {
-            let bin_path = notes_dir.join(format!("{}.bin", meta.id));
-            if bin_path.exists() {
-                if let Ok(bytes) = fs::read(&bin_path) {
-                    note.content = encode_base64(&bytes);
+            if note.content.starts_with("http") {
+                // MinIO URL，直接保留，不读 .bin
+            } else {
+                let bin_path = notes_dir.join(format!("{}.bin", meta.id));
+                if bin_path.exists() {
+                    if let Ok(bytes) = fs::read(&bin_path) {
+                        note.content = encode_base64(&bytes);
+                    }
                 }
             }
         }
@@ -452,16 +457,22 @@ pub fn import_all_data(app: AppHandle, data: String) -> Result<(), String> {
     let mut index: Vec<NoteMetadata> = Vec::new();
 
     for note in &app_data.notes {
-        // PDF/图片：content 含 base64，写入 .bin，JSON 中 content 置空
+        // PDF/图片：
+        // - 如果 content 是 MinIO URL（http 开头），直接保留到 JSON
+        // - 如果 content 是 base64，解码写入 .bin，JSON 中 content 置空
         let mut file_note = note.clone();
         if !is_text_type(&note.note_type) && !note.content.is_empty() {
-            let bin_path = notes_dir.join(format!("{}.bin", note.id));
-            match decode_base64(&note.content) {
-                Ok(bytes) => {
-                    fs::write(&bin_path, &bytes).map_err(|e| e.to_string())?;
-                    file_note.content = String::new();
+            if note.content.starts_with("http") {
+                // MinIO URL，直接保留在 JSON 中，不写 .bin
+            } else {
+                let bin_path = notes_dir.join(format!("{}.bin", note.id));
+                match decode_base64(&note.content) {
+                    Ok(bytes) => {
+                        fs::write(&bin_path, &bytes).map_err(|e| e.to_string())?;
+                        file_note.content = String::new();
+                    }
+                    Err(_) => {}
                 }
-                Err(_) => {}
             }
         }
 

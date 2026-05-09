@@ -475,11 +475,37 @@ function openNote(id) {
     showMarkdownEditor(note);
   } else if (note.type === 'pdf') {
     // 按需加载二进制数据
-    if (!State.noteBinaries[id]) {
-      invoke('load_note_binary', { id }).then(base64 => {
-        State.noteBinaries[id] = base64 || '';
-        showPdfViewer(note);
-      }).catch(e => console.error('load_note_binary failed:', e));
+    if (!State.blobUrls[id] && !State.noteBinaries[id]) {
+      // 先检查 note.content 是否是 MinIO URL
+      invoke('load_note', { id }).then(async (raw) => {
+        const noteData = JSON.parse(raw);
+        const content = noteData.content || '';
+        if (content.startsWith('http')) {
+          // MinIO URL：通过后端下载 PDF 二进制（绕过 Ngrok 拦截）
+          try {
+            if (isTauri()) {
+              const dataUrl = await invoke('fetch_ngrok_image', { url: content });
+              // dataUrl 是 data:xxx;base64,... 格式
+              const b64Part = dataUrl.split(',')[1] || dataUrl;
+              const bytes = base64ToUint8Array(b64Part);
+              State.blobUrls[id] = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+            } else {
+              const resp = await fetch(content, { headers: { 'ngrok-skip-browser-warning': 'true' } });
+              const blob = await resp.blob();
+              State.blobUrls[id] = URL.createObjectURL(blob);
+            }
+            showPdfViewer(note);
+          } catch (e) {
+            console.error('MinIO PDF 加载失败:', e);
+            toast('PDF 加载失败', 'danger');
+          }
+        } else {
+          // 旧格式：从 .bin 文件加载 base64
+          const base64 = await invoke('load_note_binary', { id });
+          State.noteBinaries[id] = base64 || '';
+          showPdfViewer(note);
+        }
+      }).catch(e => console.error('load_note failed:', e));
     } else {
       showPdfViewer(note);
     }
@@ -1126,11 +1152,30 @@ function openNote(id) {
       const base64 = arrayBufferToBase64(ab);
       const blob = new Blob([ab], { type: 'application/pdf' });
       const blobUrl = URL.createObjectURL(blob);
+
+      let pdfContentUrl = ''; // MinIO URL or empty
+      if (isMinioEnabled()) {
+        // 上传 PDF 到 MinIO，content 存储 URL
+        try {
+          toast('正在上传 PDF 到 MinIO...', 'info');
+          pdfContentUrl = await uploadImageToMinio(id, name, base64, 'application/pdf');
+          toast('PDF 已上传到 MinIO', 'success');
+        } catch (e) {
+          console.error('MinIO PDF 上传失败，回退到本地存储:', e);
+          toast('MinIO 上传失败，使用本地存储', 'warning');
+          pdfContentUrl = '';
+        }
+      }
+
       note = { id, folderId: null, name, type: 'pdf', blobUrl, createdAt: now, updatedAt: now };
       State.notes.unshift(note);
       State.noteBinaries[id] = base64;
       State.blobUrls[id] = blobUrl;
-      await invoke('save_note', { noteJson: JSON.stringify({ id, folderId: null, name, type: 'pdf', content: '', createdAt: now, updatedAt: now }), binaryBase64: base64 });
+      // MinIO 成功时 content 存 URL（同步时只传 URL），否则 binaryBase64 存本地
+      await invoke('save_note', {
+        noteJson: JSON.stringify({ id, folderId: null, name, type: 'pdf', content: pdfContentUrl, createdAt: now, updatedAt: now }),
+        binaryBase64: pdfContentUrl ? '' : base64
+      });
     } else if (['png','jpg','jpeg','gif','webp','svg'].includes(ext)) {
       const ab = await file.arrayBuffer();
       const base64 = arrayBufferToBase64(ab);
