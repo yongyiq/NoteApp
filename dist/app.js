@@ -2094,6 +2094,12 @@ function openNote(id) {
     MinioPanel.init();
     loadMinioConfig().catch(() => {});
 
+    // Web 端：显示「下载桌面版」按钮
+    if (!isTauri()) {
+      const dlBtn = document.getElementById('download-desktop');
+      if (dlBtn) dlBtn.style.display = 'block';
+    }
+
     if (State.notes.length > 0) {
       openNote(State.notes[0].id);
     }
