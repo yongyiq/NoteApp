@@ -427,11 +427,8 @@ pub fn export_all_data(app: AppHandle) -> Result<String, String> {
                         if minio_available {
                             // 自动迁移：上传 .bin 到 MinIO，content 存 URL
                             let ext = meta.name.rsplit('.').next().unwrap_or("bin");
-                            let safe_name = format!("{}_{}.{}",
-                                meta.id,
-                                meta.created_at.to_string().chars().take(10).collect::<String>(),
-                                ext
-                            );
+                            let timestamp = chrono::Utc::now().format("%Y%m%d%H%M%S").to_string();
+                            let safe_name = format!("{}_{}.{}", timestamp, &meta.id[..meta.id.len().min(8)], ext);
                             let content_type = match ext {
                                 "pdf" => "application/pdf",
                                 "png" => "image/png",
@@ -441,7 +438,9 @@ pub fn export_all_data(app: AppHandle) -> Result<String, String> {
                                 "svg" => "image/svg+xml",
                                 _ => "application/octet-stream",
                             };
-                            let key = format!("{}/{}", meta.id, safe_name);
+                            // 按类型分目录：pdfs/ 或 images/
+                            let folder = if ext == "pdf" { "pdfs" } else { "images" };
+                            let key = format!("{}/{}", folder, safe_name);
                             match minio::upload_object(&minio_config, &key, &bytes, content_type) {
                                 Ok(url) => {
                                     note.content = url;
@@ -1229,7 +1228,7 @@ pub fn test_minio_connection(config_json: String) -> Result<String, String> {
 #[tauri::command]
 pub fn upload_to_minio(
     app: AppHandle,
-    note_id: String,
+    _note_id: String,
     filename: String,
     binary_base64: String,
     content_type: String,
@@ -1239,9 +1238,10 @@ pub fn upload_to_minio(
         return Err("MinIO 未配置或未启用，请先在存储设置中配置 MinIO".to_string());
     }
 
-    // 清理文件名，生成对象 key
+    // 按内容类型分目录：pdfs/ 或 images/，文件名用时间戳
+    let folder = if content_type.contains("pdf") { "pdfs" } else { "images" };
     let safe_name = sanitize_filename(&filename);
-    let key = format!("attachments/{}/{}", note_id, safe_name);
+    let key = format!("{}/{}", folder, safe_name);
 
     // 解码 base64
     let bytes = decode_base64(&binary_base64)?;

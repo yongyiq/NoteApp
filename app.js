@@ -1828,7 +1828,8 @@ function openNote(id) {
   }
 
   /**
-   * 上传图片到 MinIO，返回公开 URL
+   * 上传文件到 MinIO，返回公开 URL
+   * key 格式：images/{filename} 或 pdfs/{filename}（由 contentType 决定）
    * Tauri 端走后端签名，Web 端用浏览器 fetch + AWS V4 签名
    */
   async function uploadImageToMinio(noteId, filename, base64, contentType) {
@@ -1843,7 +1844,9 @@ function openNote(id) {
     }
     // Web 端：浏览器端 AWS V4 签名
     const cfg = State.minioConfig;
-    const objectKey = noteId + '/' + filename;
+    // 按类型分目录：pdfs/ 或 images/
+    const folder = contentType.includes('pdf') ? 'pdfs' : 'images';
+    const objectKey = folder + '/' + filename;
     const binary = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
     const url = cfg.endpoint + '/' + cfg.bucket + '/' + objectKey;
     const signed = await signV4('PUT', url, binary, cfg);
