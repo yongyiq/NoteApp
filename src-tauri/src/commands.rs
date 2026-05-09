@@ -70,8 +70,12 @@ pub struct Folder {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppData {
     pub notes: Vec<Note>,
+    #[serde(default)]
     pub folders: Vec<Folder>,
-    pub theme: String,
+    #[serde(default)]
+    pub settings: Option<AppSettings>,
+    #[serde(default)]
+    pub theme: Option<String>,
 }
 
 /// 设置数据（settings.json）
@@ -254,7 +258,8 @@ fn migrate_from_legacy(app: &AppHandle) -> Result<(), String> {
     fs::write(&folders_path, folders_json).map_err(|e| e.to_string())?;
 
     // 写入 settings.json
-    let settings = AppSettings { theme: app_data.theme };
+    let theme_to_save = app_data.theme.unwrap_or_else(|| "light".to_string());
+    let settings = AppSettings { theme: theme_to_save };
     let settings_path = get_settings_path(app)?;
     let settings_json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     fs::write(&settings_path, settings_json).map_err(|e| e.to_string())?;
@@ -468,7 +473,8 @@ pub fn export_all_data(app: AppHandle) -> Result<String, String> {
     let app_data = AppData {
         notes,
         folders,
-        theme: settings.theme,
+        settings: Some(settings.clone()),
+        theme: Some(settings.theme),
     };
 
     serde_json::to_string(&app_data).map_err(|e| e.to_string())
@@ -519,7 +525,15 @@ pub fn import_all_data(app: AppHandle, data: String) -> Result<(), String> {
 
     write_index(&app, &index)?;
     save_folders(app.clone(), serde_json::to_string(&app_data.folders).map_err(|e| e.to_string())?)?;
-    save_settings(app.clone(), serde_json::to_string(&AppSettings { theme: app_data.theme }).map_err(|e| e.to_string())?)?;
+    
+    let theme_to_save = if let Some(s) = &app_data.settings {
+        s.theme.clone()
+    } else if let Some(t) = &app_data.theme {
+        t.clone()
+    } else {
+        "light".to_string()
+    };
+    save_settings(app.clone(), serde_json::to_string(&AppSettings { theme: theme_to_save }).map_err(|e| e.to_string())?)?;
 
     Ok(())
 }
@@ -576,7 +590,8 @@ pub fn load_notes(app: AppHandle) -> Result<String, String> {
     let app_data = AppData {
         notes,
         folders,
-        theme: settings.theme,
+        settings: Some(settings.clone()),
+        theme: Some(settings.theme),
     };
 
     serde_json::to_string(&app_data).map_err(|e| e.to_string())
@@ -591,7 +606,14 @@ pub fn save_notes(app: AppHandle, data: String) -> Result<(), String> {
     save_folders(app.clone(), serde_json::to_string(&app_data.folders).map_err(|e| e.to_string())?)?;
 
     // 保存 settings
-    save_settings(app.clone(), serde_json::to_string(&AppSettings { theme: app_data.theme }).map_err(|e| e.to_string())?)?;
+    let theme_to_save = if let Some(s) = &app_data.settings {
+        s.theme.clone()
+    } else if let Some(t) = &app_data.theme {
+        t.clone()
+    } else {
+        "light".to_string()
+    };
+    save_settings(app.clone(), serde_json::to_string(&AppSettings { theme: theme_to_save }).map_err(|e| e.to_string())?)?;
 
     // 保存每篇笔记
     let notes_dir = get_notes_dir(&app)?;
