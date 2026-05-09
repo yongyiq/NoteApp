@@ -22,9 +22,9 @@
       return window.__TAURI__.core.invoke(cmd, args || {});
     }
     // Web 环境：路由到 WebStorage 适配层
-    if (window.WebStorage && WebStorage[cmd]) {
+    if (window.WebStorage && window.WebStorage[cmd]) {
       const params = args ? Object.values(args) : [];
-      return Promise.resolve(WebStorage[cmd](...params));
+      return Promise.resolve(window.WebStorage[cmd](...params));
     }
     console.warn('[NoteFlow] Unhandled invoke:', cmd);
     return Promise.resolve(null);
