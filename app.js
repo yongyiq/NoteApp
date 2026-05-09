@@ -66,6 +66,8 @@
     noteContents: {},   // { [noteId]: content 字符串 }
     noteBinaries: {},  // { [noteId]: base64 字符串 }
     blobUrls: {},      // { [noteId]: blobUrl }
+    minioConfig: null,  // { endpoint, bucket, accessKey, secretKey, enabled, region }
+    attachmentCache: {}, // { "noteId/filename": base64 }
   };
 
   // ─────────────────────────────────────────
@@ -610,14 +612,38 @@ function openNote(id) {
           hljs.highlightElement(el);
         });
       }
+      // 修复 ngrok 图片：ngrok 免费版会拦截 <img> 的 GET 请求
+      // 通过 fetch + ngrok-skip-browser-warning 头下载，替换为 blob URL
+      dom.mdPreview.querySelectorAll('img[src*="ngrok"]').forEach(async (img) => {
+        const src = img.getAttribute('src');
+        if (!src || img.dataset.bypassed) return;
+        img.dataset.bypassed = '1';
+        try {
+          const resp = await fetch(src, { headers: { 'ngrok-skip-browser-warning': 'true' } });
+          if (resp.ok) {
+            const blob = await resp.blob();
+            img.src = URL.createObjectURL(blob);
+          }
+        } catch (e) {
+          console.warn('ngrok 图片加载失败:', e);
+        }
+      });
     }
+  }
+
+  let previewTimer = null;
+  function debouncedUpdatePreview() {
+    if (previewTimer) clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => {
+      updatePreview();
+    }, 300);
   }
 
   dom.mdEditor.addEventListener('input', () => {
     updateWordCount();
     setUnsaved(true);
     debouncedSave();
-    if (State.viewMode === 'split') updatePreview();
+    if (State.viewMode === 'split') debouncedUpdatePreview();
   });
 
   dom.mdEditor.addEventListener('keyup', updateCursorPos);
@@ -715,32 +741,42 @@ function openNote(id) {
     if (State.viewMode !== 'edit') updatePreview();
   }
 
-  // Insert image: handle file input change (save as attachment)
+  // Insert image: handle file input change (MinIO or local attachment)
   if (dom.insertImageInput) {
     dom.insertImageInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      if (file.size > 5 * 1024 * 1024) {
-        alert('图片大小不能超过 5MB');
+      if (file.size > 20 * 1024 * 1024) {
+        alert('图片大小不能超过 20MB');
         return;
       }
-      const noteId = State.currentNote?.id;
+      const noteId = State.currentId;
       if (!noteId) { alert('请先选择或创建一个笔记'); return; }
       const reader = new FileReader();
       reader.onload = (ev) => {
         const base64 = ev.target.result.split(',')[1];
-        invoke('save_attachment', { noteId, filename: file.name, binaryBase64: base64 })
-          .then(() => {
-            insertTextAtCursor(`![${file.name}](./attachments/${noteId}/${file.name})`);
-            dom.insertImageInput.value = '';
-          })
-          .catch(err => { console.error('保存附件失败:', err); alert('保存图片失败: ' + err); });
+        if (isMinioEnabled()) {
+          toast('正在上传图片到 MinIO...', 'info');
+          uploadImageToMinio(noteId, file.name, base64, file.type)
+            .then(url => {
+              insertTextAtCursor(`![${file.name}](${url})`);
+              toast('图片已上传到 MinIO ✓', 'success');
+            })
+            .catch(err => { console.error('MinIO 上传失败:', err); toast('MinIO 上传失败: ' + err, 'error'); });
+        } else {
+          invoke('save_attachment', { noteId, filename: file.name, binaryBase64: base64 })
+            .then(() => {
+              insertTextAtCursor(`![${file.name}](./attachments/${noteId}/${file.name})`);
+            })
+            .catch(err => { console.error('保存附件失败:', err); toast('保存图片失败: ' + err, 'error'); });
+        }
+        dom.insertImageInput.value = '';
       };
       reader.readAsDataURL(file);
     });
   }
 
-  // Paste image from clipboard (save as attachment)
+  // Paste image from clipboard (MinIO or local attachment)
   dom.mdEditor.addEventListener('paste', (e) => {
     const files = e.clipboardData?.files;
     if (!files || files.length === 0) return;
@@ -748,7 +784,7 @@ function openNote(id) {
     if (imageFiles.length === 0) return;
     e.preventDefault();
 
-    const noteId = State.currentNote?.id;
+    const noteId = State.currentId;
     if (!noteId) { alert('请先选择或创建一个笔记'); return; }
 
     imageFiles.forEach(file => {
@@ -757,11 +793,21 @@ function openNote(id) {
       const reader = new FileReader();
       reader.onload = (ev) => {
         const base64 = ev.target.result.split(',')[1];
-        invoke('save_attachment', { noteId, filename, binaryBase64: base64 })
-          .then(() => {
-            insertTextAtCursor(`![${filename}](./attachments/${noteId}/${filename})\n`);
-          })
-          .catch(err => { console.error('保存粘贴图片失败:', err); });
+        if (isMinioEnabled()) {
+          toast('正在上传图片到 MinIO...', 'info');
+          uploadImageToMinio(noteId, filename, base64, file.type)
+            .then(url => {
+              insertTextAtCursor(`![${filename}](${url})\n`);
+              toast('图片已上传到 MinIO ✓', 'success');
+            })
+            .catch(err => { console.error('MinIO 上传失败:', err); toast('MinIO 上传失败: ' + err, 'error'); });
+        } else {
+          invoke('save_attachment', { noteId, filename, binaryBase64: base64 })
+            .then(() => {
+              insertTextAtCursor(`![${filename}](./attachments/${noteId}/${filename})\n`);
+            })
+            .catch(err => { console.error('保存粘贴图片失败:', err); });
+        }
       };
       reader.readAsDataURL(file);
     });
@@ -1538,9 +1584,11 @@ function openNote(id) {
         const res = await invoke('sync_from_gitee');
         const result = JSON.parse(res);
         if (result.success) {
-          // result.message 包含完整的笔记 JSON 数据
-          // 使用 import_all_data 写入本地分文件存储
-          await invoke('import_all_data', { data: result.message });
+          if (isTauri()) {
+            // Tauri 端：result.message 包含完整的笔记 JSON 数据，需要 import_all_data 写入文件
+            await invoke('import_all_data', { data: result.message });
+          }
+          // Web 端：sync_from_gitee 已直接写入 IndexedDB，无需二次导入
           // 重新加载所有数据
           await loadFromStorage();
           renderSidebar();
@@ -1667,6 +1715,196 @@ function openNote(id) {
   };
 
   // ─────────────────────────────────────────
+  // MINIO 图片存储
+  // ─────────────────────────────────────────
+
+  async function loadMinioConfig() {
+    try {
+      const raw = await invoke('load_minio_config');
+      if (raw) {
+        const cfg = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        // Rust 返回下划线字段，统一转驼峰存入 State
+        State.minioConfig = {
+          endpoint: cfg.endpoint || '',
+          bucket:   cfg.bucket   || '',
+          accessKey: cfg.access_key || cfg.accessKey || '',
+          secretKey: cfg.secret_key || cfg.secretKey || '',
+          enabled:  cfg.enabled  || false,
+          region:   cfg.region   || 'us-east-1',
+        };
+      } else {
+        State.minioConfig = null;
+      }
+    } catch(e) {
+      State.minioConfig = null;
+    }
+  }
+
+  function isMinioEnabled() {
+    const c = State.minioConfig;
+    return !!(c && c.enabled && c.endpoint && c.bucket && c.accessKey && c.secretKey);
+  }
+
+  /**
+   * 上传图片到 MinIO，返回公开 URL
+   * Tauri 端走后端签名，Web 端用浏览器 fetch + AWS V4 签名
+   */
+  async function uploadImageToMinio(noteId, filename, base64, contentType) {
+    if (isTauri()) {
+      const url = await invoke('upload_to_minio', {
+        noteId: noteId,
+        filename: filename,
+        binaryBase64: base64,
+        contentType: contentType
+      });
+      return url;
+    }
+    // Web 端：浏览器端 AWS V4 签名
+    const cfg = State.minioConfig;
+    const objectKey = noteId + '/' + filename;
+    const binary = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    const url = cfg.endpoint + '/' + cfg.bucket + '/' + objectKey;
+    const signed = await signV4('PUT', url, binary, cfg);
+    const resp = await fetch(signed.url, {
+      method: 'PUT', headers: signed.headers, body: binary
+    });
+    if (!resp.ok) throw new Error('MinIO 上传失败: ' + resp.status);
+    return cfg.endpoint + '/' + cfg.bucket + '/' + objectKey;
+  }
+
+  // 浏览器端 AWS Signature V4 签名
+  async function signV4(method, url, payload, cfg) {
+    const u = new URL(url);
+    const region = cfg.region || 'us-east-1';
+    const service = 's3';
+    const now = new Date();
+    const dateStamp = now.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    const dateDay = dateStamp.substring(0, 8);
+    const scope = dateDay + '/' + region + '/' + service + '/aws4_request';
+
+    const hashPayload = await sha256Hex(payload);
+    const canonicalUri = encodeURI(u.pathname).replace(/%2F/g, '/');
+    const canonicalQuery = u.search || '';
+    const canonicalHeaders = 'content-type:' + (payload ? 'application/octet-stream' : '') + '\nhost:' + u.host + '\nx-amz-content-sha256:' + hashPayload + '\nx-amz-date:' + dateStamp + '\n';
+    const signedHeaders = 'content-type;host;x-amz-content-sha256;x-amz-date';
+    const canonicalRequest = method + '\n' + canonicalUri + '\n' + canonicalQuery + '\n' + canonicalHeaders + '\n' + signedHeaders + '\n' + hashPayload;
+    const stringToSign = 'AWS4-HMAC-SHA256\n' + dateStamp + '\n' + scope + '\n' + (await sha256Hex(canonicalRequest));
+
+    let kDate = await hmacSha256('AWS4' + cfg.secretKey, dateDay);
+    let kRegion = await hmacSha256(kDate, region);
+    let kService = await hmacSha256(kRegion, service);
+    let kSigning = await hmacSha256(kService, 'aws4_request');
+    const sig = await hmacSha256Hex(kSigning, stringToSign);
+    const credential = cfg.accessKey + '/' + scope;
+    const auth = 'AWS4-HMAC-SHA256 Credential=' + credential + ', SignedHeaders=' + signedHeaders + ', Signature=' + sig;
+    return {
+      url: url,
+      headers: { 'Authorization': auth, 'x-amz-content-sha256': hashPayload, 'x-amz-date': dateStamp, 'Content-Type': 'application/octet-stream' }
+    };
+  }
+
+  async function sha256Hex(data) {
+    const buf = (typeof data === 'string') ? new TextEncoder().encode(data) : data;
+    const hash = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function hmacSha256(key, msg) {
+    const k = (typeof key === 'string') ? new TextEncoder().encode(key) : key;
+    const m = new TextEncoder().encode(msg);
+    const ck = await crypto.subtle.importKey('raw', k, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    return await crypto.subtle.sign('HMAC', ck, m);
+  }
+
+  async function hmacSha256Hex(key, msg) {
+    const sig = await hmacSha256(key, msg);
+    return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  // MinIO 设置面板
+  const MinioPanel = {
+    panel: null,
+    logEl: null,
+
+    init() {
+      this.panel = document.getElementById('minio-panel');
+      this.logEl = document.getElementById('minio-log');
+      const btn = document.getElementById('btn-minio-settings');
+      const closeBtn = document.getElementById('minio-panel-close');
+      const testBtn = document.getElementById('minio-test-btn');
+      const saveBtn = document.getElementById('minio-save-btn');
+
+      if (btn) btn.addEventListener('click', () => this.open());
+      if (closeBtn) closeBtn.addEventListener('click', () => this.close());
+      if (testBtn) testBtn.addEventListener('click', () => this.testConnection());
+      if (saveBtn) saveBtn.addEventListener('click', () => this.saveConfig());
+    },
+
+    open() {
+      if (this.panel) this.panel.style.display = 'flex';
+      // 从 State 填充表单
+      const cfg = State.minioConfig || {};
+      document.getElementById('minio-enabled').checked = !!cfg.enabled;
+      document.getElementById('minio-endpoint').value = cfg.endpoint || 'https://pedometer-dweller-encounter.ngrok-free.dev';
+      document.getElementById('minio-bucket').value = cfg.bucket || 'noteflow-images';
+      document.getElementById('minio-access-key').value = cfg.accessKey || '';
+      document.getElementById('minio-secret-key').value = cfg.secretKey || '';
+      document.getElementById('minio-region').value = cfg.region || 'us-east-1';
+      if (this.logEl) this.logEl.textContent = '';
+    },
+
+    close() {
+      if (this.panel) this.panel.style.display = 'none';
+    },
+
+    log(msg) {
+      if (this.logEl) {
+        this.logEl.textContent += msg + '\n';
+        this.logEl.scrollTop = this.logEl.scrollHeight;
+      }
+    },
+
+    async testConnection() {
+      if (this.logEl) this.logEl.textContent = '';
+      this.log('正在测试连接...');
+      const endpoint = document.getElementById('minio-endpoint').value.trim();
+      const bucket = document.getElementById('minio-bucket').value.trim();
+      const accessKey = document.getElementById('minio-access-key').value.trim();
+      const secretKey = document.getElementById('minio-secret-key').value.trim();
+      const region = document.getElementById('minio-region').value.trim() || 'us-east-1';
+      try {
+        const ok = await invoke('test_minio_connection', {
+          configJson: JSON.stringify({ endpoint, bucket, access_key: accessKey, secret_key: secretKey, enabled: true, region })
+        });
+        this.log(ok ? '✅ 连接成功！' : '❌ 连接失败');
+      } catch(e) {
+        this.log('❌ 连接失败: ' + e);
+      }
+    },
+
+    async saveConfig() {
+      if (this.logEl) this.logEl.textContent = '';
+      const accessKey = document.getElementById('minio-access-key').value.trim();
+      const secretKey = document.getElementById('minio-secret-key').value.trim();
+      const config = {
+        enabled: document.getElementById('minio-enabled').checked,
+        endpoint: document.getElementById('minio-endpoint').value.trim(),
+        bucket: document.getElementById('minio-bucket').value.trim(),
+        access_key: accessKey,
+        secret_key: secretKey,
+        region: document.getElementById('minio-region').value.trim() || 'us-east-1'
+      };
+      try {
+        await invoke('save_minio_config', { configJson: JSON.stringify(config) });
+        // 内存中 State.minioConfig 仍用驼峰字段，方便前端读取
+        State.minioConfig = { ...config, accessKey, secretKey };
+        this.log('✅ 配置已保存' + (config.enabled ? '（MinIO 已启用）' : '（MinIO 已禁用）'));
+      } catch(e) {
+        this.log('❌ 保存失败: ' + e);
+      }
+    }
+  };
+
   // ─────────────────────────────────────────
   // CLOSE GUARD — 关闭窗口前强制保存未保存内容
   // 策略：不拦截关闭事件（避免窗口关不掉的问题），
@@ -1675,6 +1913,7 @@ function openNote(id) {
   // ─────────────────────────────────────────
   function setupCloseGuard() {
     if (isTauri()) {
+      let backupWarningShown = false;
       // 同步保存到 localStorage 作为紧急备份（同步操作，不会被关闭打断）
       function emergencySave() {
         try {
@@ -1690,11 +1929,16 @@ function openNote(id) {
                 folderId: note.folderId,
                 savedAt: Date.now()
               }));
+              if (backupWarningShown) backupWarningShown = false;
               return;
             }
           }
         } catch (e) {
-          // localStorage 满了或其他错误，静默忽略
+          if (!backupWarningShown) {
+            console.error('[NoteFlow] 紧急备份失败:', e);
+            toast('紧急备份失败，存储空间不足', 'danger');
+            backupWarningShown = true;
+          }
         }
       }
 
@@ -1762,6 +2006,8 @@ function openNote(id) {
     renderSidebar();
     SyncPanel.init();
     StoragePanel.init();
+    MinioPanel.init();
+    loadMinioConfig().catch(() => {});
 
     if (State.notes.length > 0) {
       openNote(State.notes[0].id);

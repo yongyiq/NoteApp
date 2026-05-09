@@ -188,6 +188,29 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
+/// RFC 3986 URI 编码（AWS V4 要求）
+fn uri_encode(input: &str, encode_slash: bool) -> String {
+    let mut result = String::with_capacity(input.len() * 3);
+    for b in input.bytes() {
+        match b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                result.push(b as char);
+            }
+            b'/' => {
+                if encode_slash {
+                    result.push_str("%2F");
+                } else {
+                    result.push('/');
+                }
+            }
+            _ => {
+                result.push_str(&format!("%{:02X}", b));
+            }
+        }
+    }
+    result
+}
+
 /// AWS Signature V4 签名生成
 /// 返回 Authorization 请求头值
 pub fn sign_v4(
@@ -198,7 +221,7 @@ pub fn sign_v4(
     content_type: &str, // "image/jpeg" 等，空体传 ""
     content_length: usize,
     date_str: &str,     // "20240101T120000Z"
-) -> BTreeMap<String, String> {
+) -> (BTreeMap<String, String>, String) {
     let date_only = &date_str[..8]; // "20240101"
     let endpoint = config.endpoint.trim_end_matches('/');
 
@@ -207,11 +230,12 @@ pub fn sign_v4(
         .trim_start_matches("https://")
         .trim_start_matches("http://");
 
-    let canonical_uri = if key.is_empty() {
+    let raw_uri = if key.is_empty() {
         format!("/{}", config.bucket)
     } else {
         format!("/{}/{}", config.bucket, key)
     };
+    let canonical_uri = uri_encode(&raw_uri, false);
     let canonical_querystring = "";
     let canonical_headers = format!(
         "content-length:{}\ncontent-type:{}\nhost:{}\nx-amz-content-sha256:{}\nx-amz-date:{}\n",
@@ -260,7 +284,7 @@ pub fn sign_v4(
     headers.insert("content-length".to_string(), content_length.to_string());
     headers.insert("host".to_string(), host.to_string());
     headers.insert("ngrok-skip-browser-warning".to_string(), "true".to_string());
-    headers
+    (headers, canonical_uri)
 }
 
 // ==========================================
@@ -282,13 +306,13 @@ pub fn upload_object(
     let date_str = now.format("%Y%m%dT%H%M%SZ").to_string();
 
     let body_hash = hex(&sha256(binary_data));
-    let headers = sign_v4(
+    let (headers, canonical_uri) = sign_v4(
         config, "PUT", key, &body_hash, content_type,
         binary_data.len(), &date_str,
     );
 
     let endpoint = config.endpoint.trim_end_matches('/');
-    let url = format!("{}/{}/{}", endpoint, config.bucket, key);
+    let url = format!("{}{}", endpoint, canonical_uri);
 
     let client = reqwest::blocking::Client::new();
     let mut req = client.put(&url);
@@ -316,10 +340,10 @@ pub fn delete_object(config: &MinioConfig, key: &str) -> Result<(), String> {
 
     // 空体哈希
     let body_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-    let headers = sign_v4(config, "DELETE", key, body_hash, "", 0, &date_str);
+    let (headers, canonical_uri) = sign_v4(config, "DELETE", key, body_hash, "", 0, &date_str);
 
     let endpoint = config.endpoint.trim_end_matches('/');
-    let url = format!("{}/{}/{}", endpoint, config.bucket, key);
+    let url = format!("{}{}", endpoint, canonical_uri);
 
     let client = reqwest::blocking::Client::new();
     let mut req = client.delete(&url);
