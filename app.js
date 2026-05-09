@@ -2094,10 +2094,10 @@ function openNote(id) {
     MinioPanel.init();
     loadMinioConfig().catch(() => {});
 
-    // Web 端：显示「下载桌面版」按钮
+    // Web 端：显示顶部工具栏的「下载桌面版」按钮
     if (!isTauri()) {
-      const dlBtn = document.getElementById('download-desktop');
-      if (dlBtn) dlBtn.style.display = 'block';
+      const dlBtn = document.getElementById('btn-download-desktop');
+      if (dlBtn) dlBtn.style.display = '';
     }
 
     if (State.notes.length > 0) {

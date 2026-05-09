@@ -93,6 +93,15 @@
           <line x1="7" y1="12" x2="11" y2="12"/>
         </svg>
       </button>
+      <a id="btn-download-desktop" class="icon-btn" title="下载 Windows 桌面版" style="display:none"
+         href="https://pedometer-dweller-encounter.ngrok-free.dev/noteflow-images/NoteFlow_0.5.0_x64-setup.exe"
+         download>
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+          <path d="M10 3v10"/>
+          <polyline points="6,9 10,13 14,9"/>
+          <path d="M4 15v2h12v-2"/>
+        </svg>
+      </a>
       <button id="btn-new-note" class="icon-btn primary-btn" title="新建笔记">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
           <line x1="10" y1="4" x2="10" y2="16"/>
@@ -212,21 +221,6 @@
               <div class="tip-item">
                 <span class="tip-key">Ctrl+/</span> 切换预览
               </div>
-            </div>
-            <!-- 桌面版下载按钮（仅 Web 端显示） -->
-            <div id="download-desktop" style="display:none;margin-top:20px;">
-              <a id="download-desktop-link"
-                 href="https://pedometer-dweller-encounter.ngrok-free.dev/noteflow-images/NoteFlow_0.5.0_x64-setup.exe"
-                 class="welcome-btn primary"
-                 style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;padding:10px 22px;font-size:14px;"
-                 download>
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" width="16" height="16">
-                  <path d="M10 3v10M6 9l4 4 4-4"/>
-                  <path d="M3 15v2h14v-2"/>
-                </svg>
-                下载 Windows 桌面版
-              </a>
-              <p style="margin-top:8px;font-size:11px;color:var(--text-tertiary);">NoteFlow v0.5.0 · 离线可用，体验更佳</p>
             </div>
           </div>
         </div>
