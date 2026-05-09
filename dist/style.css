@@ -905,3 +905,174 @@ input { font-family: inherit; }
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+/* ==================== MOBILE (竖屏 / Android 适配) ==================== */
+@media (max-width: 768px) {
+  /* ── 全局 ── */
+  :root {
+    --sidebar-width: 280px;
+    --topbar-height: 44px;
+    --toolbar-height: 38px;
+  }
+  html, body { -webkit-text-size-adjust: 100%; overflow: hidden; }
+
+  /* ── 顶部栏精简 ── */
+  #topbar { padding: 0 8px; gap: 6px; }
+  .app-logo { font-size: 14px; gap: 5px; }
+  .app-logo svg { width: 18px; height: 18px; }
+
+  /* 隐藏搜索框和非关键按钮 */
+  .search-wrap { display: none; }
+  #btn-storage-settings { display: none !important; }
+  #btn-minio-settings { display: none !important; }
+
+  /* 文件名缩短 */
+  .file-badge { max-width: 120px; font-size: 12px; }
+  .save-status { font-size: 11px; }
+
+  /* ── 侧边栏 → 覆盖层 ── */
+  #sidebar {
+    position: fixed;
+    top: var(--topbar-height);
+    left: 0;
+    width: var(--sidebar-width);
+    height: calc(100vh - var(--topbar-height));
+    z-index: 500;
+    box-shadow: var(--shadow-lg);
+    transition: transform 0.25s ease, opacity 0.25s ease;
+    transform: translateX(0);
+  }
+  #sidebar.collapsed {
+    width: var(--sidebar-width);
+    transform: translateX(-100%);
+    opacity: 1;
+    pointer-events: none;
+  }
+
+  /* 侧边栏打开时的遮罩 */
+  #sidebar::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: var(--sidebar-width);
+    width: calc(100vw - var(--sidebar-width));
+    height: 100vh;
+    background: rgba(0,0,0,0.3);
+    pointer-events: auto;
+    opacity: 1;
+    transition: opacity 0.25s ease;
+  }
+  #sidebar.collapsed::after {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .sidebar-header { padding: 10px 12px 6px; }
+  .sidebar-title { font-size: 12px; }
+  .file-item { padding: 8px 10px; font-size: 13px; }
+  .folder-item { padding: 8px 10px; }
+  #file-list { padding: 4px 6px 8px; }
+
+  /* ── 编辑区 ── */
+  #editor-area { width: 100%; }
+
+  /* 工具栏滚动 + 更紧凑 */
+  #editor-toolbar {
+    padding: 0 6px;
+    gap: 2px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tb-btn { height: 30px; min-width: 30px; padding: 0 5px; font-size: 12px; }
+  .toolbar-sep { margin: 0 2px; height: 16px; }
+  .save-btn { height: 26px; padding: 0 8px; font-size: 11px; }
+  .mode-btn { font-size: 11px; }
+
+  /* 编辑器 */
+  #md-editor {
+    padding: 16px 14px;
+    font-size: 14px;
+    line-height: 1.65;
+  }
+  #md-preview {
+    padding: 16px 14px;
+    max-width: 100%;
+  }
+
+  /* 预览区 markdown 微调 */
+  .markdown-body h1 { font-size: 22px; }
+  .markdown-body h2 { font-size: 18px; }
+  .markdown-body h3 { font-size: 16px; }
+  .markdown-body pre code { font-size: 12px; padding: 12px 14px; }
+  .markdown-body table { font-size: 12px; }
+  .markdown-body th, .markdown-body td { padding: 6px 8px; }
+
+  /* 底部状态栏 */
+  #editor-footer { padding: 4px 10px; font-size: 10px; }
+
+  /* ── PDF 查看器 ── */
+  .pdf-toolbar { padding: 6px 10px; gap: 4px; font-size: 12px; }
+  #pdf-viewer-wrap { padding: 10px; }
+
+  /* ── 欢迎页 ── */
+  .welcome-inner { padding: 24px 16px; }
+  .welcome-inner h2 { font-size: 19px; }
+  .welcome-inner p { font-size: 13px; margin-bottom: 20px; }
+  .welcome-inner svg { width: 44px; height: 44px; }
+  .welcome-actions { flex-direction: column; align-items: center; gap: 8px; }
+  .welcome-btn { width: 100%; text-align: center; }
+  .welcome-tips { gap: 10px; }
+  .tip-item { font-size: 11px; }
+
+  /* ── 弹窗 ── */
+  #modal-box {
+    min-width: unset;
+    max-width: unset;
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+  }
+  #modal-header { padding: 12px 14px 10px; }
+  #modal-body { padding: 14px; }
+  #modal-footer { padding: 10px 14px; }
+
+  /* ── 右侧面板 → 全屏 ── */
+  #sync-panel, #storage-panel, #minio-panel {
+    width: 100vw;
+    border-left: none;
+  }
+  .sync-panel-body { padding: 12px; }
+  .sync-field label { font-size: 12px; }
+  .sync-field input { font-size: 14px; padding: 8px 10px; }
+  .sync-btn { font-size: 13px; padding: 8px 14px; }
+  .sync-log { font-size: 11px; max-height: 160px; }
+
+  /* ── 右键菜单 ── */
+  #context-menu { min-width: 130px; }
+  .ctx-item { padding: 9px 14px; font-size: 13px; }
+
+  /* ── Toast ── */
+  #toast-container {
+    bottom: 12px;
+    right: 12px;
+    left: 12px;
+  }
+  .toast {
+    max-width: 100%;
+    font-size: 13px;
+  }
+
+  /* ── 图标按钮稍大以利于触摸 ── */
+  .icon-btn { width: 34px; height: 34px; }
+  .icon-btn svg { width: 17px; height: 17px; }
+  .icon-btn.small { width: 28px; height: 28px; }
+  .icon-btn.small svg { width: 15px; height: 15px; }
+}
+
+/* 极窄屏幕（如小尺寸手机） */
+@media (max-width: 400px) {
+  :root { --sidebar-width: 240px; }
+  .app-logo span { display: none; }
+  .file-badge { max-width: 80px; }
+  #md-editor { padding: 12px 10px; }
+  #md-preview { padding: 12px 10px; }
+}

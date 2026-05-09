@@ -331,6 +331,24 @@ console.log(greet('NoteFlow'));
     dom.sidebar.classList.toggle('collapsed');
   });
 
+  // 移动端：点击侧边栏遮罩时关闭
+  document.addEventListener('click', (e) => {
+    if (window.innerWidth > 768) return;
+    const sidebar = dom.sidebar;
+    if (sidebar.classList.contains('collapsed')) return;
+    // 点击在侧边栏外部（遮罩区域）则关闭
+    if (!sidebar.contains(e.target) && e.target.id !== 'btn-toggle-sidebar' && !e.target.closest('#btn-toggle-sidebar')) {
+      sidebar.classList.add('collapsed');
+    }
+  });
+
+  // 移动端辅助函数：选笔记后自动关闭侧边栏
+  function mobileCloseSidebar() {
+    if (window.innerWidth <= 768 && dom.sidebar && !dom.sidebar.classList.contains('collapsed')) {
+      dom.sidebar.classList.add('collapsed');
+    }
+  }
+
   // ─────────────────────────────────────────
   // SIDEBAR RENDERING
   // ─────────────────────────────────────────
@@ -452,6 +470,7 @@ function openNote(id) {
     autoSave();
   }
   State.currentId = id;
+  mobileCloseSidebar();
   const note = State.notes.find(n => n.id === id);
   if (!note) return;
 
@@ -2106,6 +2125,11 @@ function openNote(id) {
 
     applyTheme(State.theme);
     renderSidebar();
+
+    // 移动端：默认折叠侧边栏
+    if (window.innerWidth <= 768) {
+      dom.sidebar.classList.add('collapsed');
+    }
     SyncPanel.init();
     StoragePanel.init();
     MinioPanel.init();
