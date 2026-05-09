@@ -184,6 +184,7 @@
 
   async function loadFromStorage() {
     try {
+      State.noteContents = {}; // Clear cache so openNote re-fetches updated content
       // 加载笔记索引（元数据，无 content）
       const indexRaw = await invoke('load_index');
       if (indexRaw && indexRaw !== '[]' && indexRaw !== '') {
@@ -613,16 +614,24 @@ function openNote(id) {
         });
       }
       // 修复 ngrok 图片：ngrok 免费版会拦截 <img> 的 GET 请求
-      // 通过 fetch + ngrok-skip-browser-warning 头下载，替换为 blob URL
+      // Tauri 端：通过 Rust 原生 HTTP 请求绕过 CORS 和 ngrok 警告
+      // Web 端：通过 fetch + ngrok-skip-browser-warning 头下载，替换为 blob URL
       dom.mdPreview.querySelectorAll('img[src*="ngrok"]').forEach(async (img) => {
         const src = img.getAttribute('src');
         if (!src || img.dataset.bypassed) return;
         img.dataset.bypassed = '1';
         try {
-          const resp = await fetch(src, { headers: { 'ngrok-skip-browser-warning': 'true' } });
-          if (resp.ok) {
-            const blob = await resp.blob();
-            img.src = URL.createObjectURL(blob);
+          if (isTauri()) {
+            // Tauri 环境：使用 Rust 后端原生请求，完全绕过 CORS 和 OPTIONS 预检拦截
+            const dataUrl = await invoke('fetch_ngrok_image', { url: src });
+            img.src = dataUrl;
+          } else {
+            // Web 环境：尝试前端 fetch
+            const resp = await fetch(src, { headers: { 'ngrok-skip-browser-warning': 'true' } });
+            if (resp.ok) {
+              const blob = await resp.blob();
+              img.src = URL.createObjectURL(blob);
+            }
           }
         } catch (e) {
           console.warn('ngrok 图片加载失败:', e);

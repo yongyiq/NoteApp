@@ -22,9 +22,9 @@
       return window.__TAURI__.core.invoke(cmd, args || {});
     }
     // Web 环境：路由到 WebStorage 适配层
-    if (window.WebStorage && WebStorage[cmd]) {
+    if (window.WebStorage && window.WebStorage[cmd]) {
       const params = args ? Object.values(args) : [];
-      return Promise.resolve(WebStorage[cmd](...params));
+      return Promise.resolve(window.WebStorage[cmd](...params));
     }
     console.warn('[NoteFlow] Unhandled invoke:', cmd);
     return Promise.resolve(null);
@@ -184,6 +184,7 @@
 
   async function loadFromStorage() {
     try {
+      State.noteContents = {}; // Clear cache so openNote re-fetches updated content
       // 加载笔记索引（元数据，无 content）
       const indexRaw = await invoke('load_index');
       if (indexRaw && indexRaw !== '[]' && indexRaw !== '') {
@@ -613,16 +614,24 @@ function openNote(id) {
         });
       }
       // 修复 ngrok 图片：ngrok 免费版会拦截 <img> 的 GET 请求
-      // 通过 fetch + ngrok-skip-browser-warning 头下载，替换为 blob URL
+      // Tauri 端：通过 Rust 原生 HTTP 请求绕过 CORS 和 ngrok 警告
+      // Web 端：通过 fetch + ngrok-skip-browser-warning 头下载，替换为 blob URL
       dom.mdPreview.querySelectorAll('img[src*="ngrok"]').forEach(async (img) => {
         const src = img.getAttribute('src');
         if (!src || img.dataset.bypassed) return;
         img.dataset.bypassed = '1';
         try {
-          const resp = await fetch(src, { headers: { 'ngrok-skip-browser-warning': 'true' } });
-          if (resp.ok) {
-            const blob = await resp.blob();
-            img.src = URL.createObjectURL(blob);
+          if (isTauri()) {
+            // Tauri 环境：使用 Rust 后端原生请求，完全绕过 CORS 和 OPTIONS 预检拦截
+            const dataUrl = await invoke('fetch_ngrok_image', { url: src });
+            img.src = dataUrl;
+          } else {
+            // Web 环境：尝试前端 fetch
+            const resp = await fetch(src, { headers: { 'ngrok-skip-browser-warning': 'true' } });
+            if (resp.ok) {
+              const blob = await resp.blob();
+              img.src = URL.createObjectURL(blob);
+            }
           }
         } catch (e) {
           console.warn('ngrok 图片加载失败:', e);
@@ -631,11 +640,19 @@ function openNote(id) {
     }
   }
 
+  let previewTimer = null;
+  function debouncedUpdatePreview() {
+    if (previewTimer) clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => {
+      updatePreview();
+    }, 300);
+  }
+
   dom.mdEditor.addEventListener('input', () => {
     updateWordCount();
     setUnsaved(true);
     debouncedSave();
-    if (State.viewMode === 'split') updatePreview();
+    if (State.viewMode === 'split') debouncedUpdatePreview();
   });
 
   dom.mdEditor.addEventListener('keyup', updateCursorPos);
@@ -1905,6 +1922,7 @@ function openNote(id) {
   // ─────────────────────────────────────────
   function setupCloseGuard() {
     if (isTauri()) {
+      let backupWarningShown = false;
       // 同步保存到 localStorage 作为紧急备份（同步操作，不会被关闭打断）
       function emergencySave() {
         try {
@@ -1920,11 +1938,16 @@ function openNote(id) {
                 folderId: note.folderId,
                 savedAt: Date.now()
               }));
+              if (backupWarningShown) backupWarningShown = false;
               return;
             }
           }
         } catch (e) {
-          // localStorage 满了或其他错误，静默忽略
+          if (!backupWarningShown) {
+            console.error('[NoteFlow] 紧急备份失败:', e);
+            toast('紧急备份失败，存储空间不足', 'danger');
+            backupWarningShown = true;
+          }
         }
       }
 

@@ -1218,3 +1218,38 @@ pub fn delete_from_minio(
     let key = format!("attachments/{}/{}", note_id, safe_name);
     minio::delete_object(&minio_config, &key)
 }
+
+/// 获取 Ngrok 图片（绕过免费版浏览器警告）
+/// 前端调用: invoke('fetch_ngrok_image', { url: '...' })
+#[tauri::command]
+pub fn fetch_ngrok_image(url: String) -> Result<String, String> {
+    let client = reqwest::blocking::Client::builder()
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let resp = client
+        .get(&url)
+        .header("ngrok-skip-browser-warning", "true")
+        .send()
+        .map_err(|e| format!("Ngrok Fetch Error: {}", e))?;
+
+    let bytes = resp.bytes().map_err(|e| e.to_string())?;
+    let b64 = encode_base64(&bytes);
+
+    let lower_url = url.to_lowercase();
+    let mime_type = if lower_url.ends_with(".png") {
+        "image/png"
+    } else if lower_url.ends_with(".jpg") || lower_url.ends_with(".jpeg") {
+        "image/jpeg"
+    } else if lower_url.ends_with(".gif") {
+        "image/gif"
+    } else if lower_url.ends_with(".svg") {
+        "image/svg+xml"
+    } else if lower_url.ends_with(".webp") {
+        "image/webp"
+    } else {
+        "image/jpeg"
+    };
+
+    Ok(format!("data:{};base64,{}", mime_type, b64))
+}

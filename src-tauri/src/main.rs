@@ -58,6 +58,7 @@ fn main() {
             commands::test_minio_connection,
             commands::upload_to_minio,
             commands::delete_from_minio,
+            commands::fetch_ngrok_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

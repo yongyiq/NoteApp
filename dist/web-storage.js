@@ -5,7 +5,7 @@
    在 app.js 之前加载，定义全局 WebStorage 对象。
 ========================================== */
 
-const WebStorage = {
+window.WebStorage = {
   DB_NAME: 'noteflow_web',
   DB_VERSION: 2,
   db: null,

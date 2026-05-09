@@ -435,11 +435,9 @@
 <input type="file" id="insert-image-input" style="display:none" accept="image/*">
 
 <script>
-  // Web 端适配层：非 Tauri 环境下加载 web-storage.js
-  if (!window.__TAURI__) {
-    document.write('<script src="web-storage.js"><\/script>');
-  }
+  // Web 端适配层（不再依赖 document.write，避免加载时序和 Vercel 拦截问题）
 </script>
+<script src="web-storage.js"></script>
 <script src="app.js?v=20260508"></script>
 </body>
 </html>
