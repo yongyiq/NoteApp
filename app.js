@@ -1727,6 +1727,16 @@ function openNote(id) {
   // MINIO 图片存储
   // ─────────────────────────────────────────
 
+  // MinIO 默认配置（硬编码，用户无需手动配置）
+  const MINIO_DEFAULTS = {
+    endpoint: 'https://pedometer-dweller-encounter.ngrok-free.dev',
+    bucket:   'noteflow-images',
+    accessKey: 'admin_minio',
+    secretKey: 'admin_minio',
+    enabled:  true,
+    region:   'us-east-1',
+  };
+
   async function loadMinioConfig() {
     try {
       const raw = await invoke('load_minio_config');
@@ -1734,18 +1744,20 @@ function openNote(id) {
         const cfg = typeof raw === 'string' ? JSON.parse(raw) : raw;
         // Rust 返回下划线字段，统一转驼峰存入 State
         State.minioConfig = {
-          endpoint: cfg.endpoint || '',
-          bucket:   cfg.bucket   || '',
-          accessKey: cfg.access_key || cfg.accessKey || '',
-          secretKey: cfg.secret_key || cfg.secretKey || '',
-          enabled:  cfg.enabled  || false,
-          region:   cfg.region   || 'us-east-1',
+          endpoint: cfg.endpoint || MINIO_DEFAULTS.endpoint,
+          bucket:   cfg.bucket   || MINIO_DEFAULTS.bucket,
+          accessKey: cfg.access_key || cfg.accessKey || MINIO_DEFAULTS.accessKey,
+          secretKey: cfg.secret_key || cfg.secretKey || MINIO_DEFAULTS.secretKey,
+          enabled:  (cfg.enabled !== undefined) ? cfg.enabled : MINIO_DEFAULTS.enabled,
+          region:   cfg.region   || MINIO_DEFAULTS.region,
         };
       } else {
-        State.minioConfig = null;
+        // 无已保存配置时，使用默认值
+        State.minioConfig = { ...MINIO_DEFAULTS };
       }
     } catch(e) {
-      State.minioConfig = null;
+      // 出错时也使用默认值，确保 MinIO 始终可用
+      State.minioConfig = { ...MINIO_DEFAULTS };
     }
   }
 

@@ -489,13 +489,13 @@ window.WebStorage = {
   async load_minio_config() {
     const raw = localStorage.getItem('noteflow_minio_config');
     if (!raw) {
-      // 返回默认配置（endpoint 预填 ngrok 地址）
+      // 返回默认配置（硬编码，默认启用）
       return JSON.stringify({
-        enabled: false,
+        enabled: true,
         endpoint: 'https://pedometer-dweller-encounter.ngrok-free.dev',
         bucket: 'noteflow-images',
-        accessKey: '',
-        secretKey: '',
+        accessKey: 'admin_minio',
+        secretKey: 'admin_minio',
         region: 'us-east-1',
       });
     }

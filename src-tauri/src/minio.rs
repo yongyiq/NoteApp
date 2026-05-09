@@ -48,11 +48,11 @@ fn default_region() -> String {
 impl Default for MinioConfig {
     fn default() -> Self {
         MinioConfig {
-            endpoint: String::new(),
+            endpoint: "https://pedometer-dweller-encounter.ngrok-free.dev".to_string(),
             bucket: "noteflow-images".to_string(),
-            access_key: String::new(),
-            secret_key: String::new(),
-            enabled: false,
+            access_key: "admin_minio".to_string(),
+            secret_key: "admin_minio".to_string(),
+            enabled: true,
             region: "us-east-1".to_string(),
         }
     }
