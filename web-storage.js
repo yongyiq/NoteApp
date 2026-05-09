@@ -508,9 +508,14 @@ window.WebStorage = {
 
   async test_minio_connection(configJson) {
     const cfg = JSON.parse(configJson);
-    if (!cfg.endpoint || !cfg.bucket || !cfg.accessKey || !cfg.secretKey) {
+    // 兼容 snake_case (来自 app.js) 和 camelCase 两种字段命名
+    const accessKey = cfg.accessKey || cfg.access_key;
+    const secretKey = cfg.secretKey || cfg.secret_key;
+    if (!cfg.endpoint || !cfg.bucket || !accessKey || !secretKey) {
       throw new Error('请填写完整的 MinIO 配置');
     }
+    cfg.accessKey = accessKey;
+    cfg.secretKey = secretKey;
     // Web 端：尝试上传一个测试对象来验证连通性
     const testData = new TextEncoder().encode('noteflow-test');
     const testKey = '.noteflow-test';
