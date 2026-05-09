@@ -7,6 +7,7 @@ use tauri_plugin_dialog::DialogExt;
 
 use crate::config;
 use crate::gitee;
+use crate::github;
 use crate::minio;
 
 // ==========================================
@@ -882,7 +883,7 @@ pub fn set_attachment_directory(app: AppHandle, new_dir: Option<String>) -> Resu
 }
 
 // ==========================================
-// 云同步命令 — Gitee 同步
+// 云同步命令 — Gitee / GitHub 同步
 // ==========================================
 
 #[tauri::command]
@@ -899,9 +900,15 @@ pub fn save_sync_config(app: AppHandle, config_json: String) -> Result<(), Strin
 }
 
 #[tauri::command]
-pub fn test_gitee_connection(token: String) -> Result<String, String> {
-    let user = gitee::test_connection(&token)?;
-    serde_json::to_string(&user).map_err(|e| e.to_string())
+pub fn test_gitee_connection(token: String, platform: Option<String>) -> Result<String, String> {
+    let plat = platform.unwrap_or_else(|| "gitee".to_string());
+    if plat == "github" {
+        let user = github::test_connection(&token)?;
+        serde_json::to_string(&user).map_err(|e| e.to_string())
+    } else {
+        let user = gitee::test_connection(&token)?;
+        serde_json::to_string(&user).map_err(|e| e.to_string())
+    }
 }
 
 #[tauri::command]
@@ -914,63 +921,66 @@ pub fn sync_to_gitee(app: AppHandle) -> Result<String, String> {
     // 从分文件汇总数据
     let all_data = export_all_data(app.clone())?;
 
-    let mut result = gitee::sync_upload(&sync_config, &all_data)?;
+    // 根据平台分发
+    let is_github = sync_config.platform == "github";
+    let mut result = if is_github {
+        github::sync_upload(&sync_config, &all_data)?
+    } else {
+        gitee::sync_upload(&sync_config, &all_data)?
+    };
 
-    // 同步附件目录
-    // 获取附件目录（可能由用户自定义）
-    let attach_root = config::get_effective_attachment_dir(&app)?;
-    println!("[sync_to_gitee] 附件根目录: {}", attach_root.display());
-    if attach_root.exists() {
-        result.details.push(format!("扫描附件目录: {}", attach_root.display()));
-        let mut upload_count = 0u32;
-        let mut upload_errors = 0u32;
-        let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    // 同步附件目录（仅 Gitee，GitHub 附件已通过 MinIO 处理）
+    if !is_github {
+        let attach_root = config::get_effective_attachment_dir(&app)?;
+        println!("[sync_to_gitee] 附件根目录: {}", attach_root.display());
+        if attach_root.exists() {
+            result.details.push(format!("扫描附件目录: {}", attach_root.display()));
+            let mut upload_count = 0u32;
+            let mut upload_errors = 0u32;
+            let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-        // 遍历 attachments/{noteId}/{filename}
-        for note_dir_entry in fs::read_dir(&attach_root).map_err(|e| e.to_string())? {
-            let note_dir_entry = note_dir_entry.map_err(|e| e.to_string())?;
-            if !note_dir_entry.file_type().map_err(|e| e.to_string())?.is_dir() {
-                continue;
-            }
-            let note_id = note_dir_entry.file_name().to_string_lossy().to_string();
-
-            for file_entry in fs::read_dir(note_dir_entry.path()).map_err(|e| e.to_string())? {
-                let file_entry = file_entry.map_err(|e| e.to_string())?;
-                if !file_entry.file_type().map_err(|e| e.to_string())?.is_file() {
+            for note_dir_entry in fs::read_dir(&attach_root).map_err(|e| e.to_string())? {
+                let note_dir_entry = note_dir_entry.map_err(|e| e.to_string())?;
+                if !note_dir_entry.file_type().map_err(|e| e.to_string())?.is_dir() {
                     continue;
                 }
-                let filename = file_entry.file_name().to_string_lossy().to_string();
-                let remote_path = format!("attachments/{}/{}", note_id, filename);
+                let note_id = note_dir_entry.file_name().to_string_lossy().to_string();
 
-                // 读取文件并 base64 编码
-                let bytes = fs::read(file_entry.path()).map_err(|e| e.to_string())?;
-                let binary_base64 = encode_base64(&bytes);
+                for file_entry in fs::read_dir(note_dir_entry.path()).map_err(|e| e.to_string())? {
+                    let file_entry = file_entry.map_err(|e| e.to_string())?;
+                    if !file_entry.file_type().map_err(|e| e.to_string())?.is_file() {
+                        continue;
+                    }
+                    let filename = file_entry.file_name().to_string_lossy().to_string();
+                    let remote_path = format!("attachments/{}/{}", note_id, filename);
 
-                // 检查远程是否已有（获取 sha）
-                let sha = match gitee::check_file_exists(&sync_config, &remote_path) {
-                    Ok(Some((sha, _))) if !sha.is_empty() => Some(sha),
-                    _ => None, // 文件不存在或 sha 为空，新建
-                };
+                    let bytes = fs::read(file_entry.path()).map_err(|e| e.to_string())?;
+                    let binary_base64 = encode_base64(&bytes);
 
-                let commit_msg = format!("[NoteFlow] 同步附件 {} @ {}", remote_path, now);
-                match gitee::upload_attachment(&sync_config, &remote_path, &binary_base64, sha.as_deref(), &commit_msg) {
-                    Ok(_) => { upload_count += 1; }
-                    Err(e) => {
-                        upload_errors += 1;
-                        result.details.push(format!("附件上传失败 {}: {}", remote_path, e));
+                    let sha = match gitee::check_file_exists(&sync_config, &remote_path) {
+                        Ok(Some((sha, _))) if !sha.is_empty() => Some(sha),
+                        _ => None,
+                    };
+
+                    let commit_msg = format!("[NoteFlow] 同步附件 {} @ {}", remote_path, now);
+                    match gitee::upload_attachment(&sync_config, &remote_path, &binary_base64, sha.as_deref(), &commit_msg) {
+                        Ok(_) => { upload_count += 1; }
+                        Err(e) => {
+                            upload_errors += 1;
+                            result.details.push(format!("附件上传失败 {}: {}", remote_path, e));
+                        }
+                    }
+
+                    if upload_count % 30 == 0 {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
                     }
                 }
-
-                // Gitee API 限流保护：每 30 个文件暂停一下
-                if upload_count % 30 == 0 {
-                    std::thread::sleep(std::time::Duration::from_millis(500));
-                }
             }
-        }
 
-        result.details.push(format!("附件上传: {} 成功, {} 失败", upload_count, upload_errors));
-    } else {
-        result.details.push("本地无附件目录，跳过附件同步".to_string());
+            result.details.push(format!("附件上传: {} 成功, {} 失败", upload_count, upload_errors));
+        } else {
+            result.details.push("本地无附件目录，跳过附件同步".to_string());
+        }
     }
 
     let mut updated_config = sync_config;
@@ -987,57 +997,60 @@ pub fn sync_from_gitee(app: AppHandle) -> Result<String, String> {
         return Err("同步配置不完整，请先完成设置".to_string());
     }
 
-    let mut result = gitee::sync_download(&sync_config)?;
+    let is_github = sync_config.platform == "github";
+    let mut result = if is_github {
+        github::sync_download(&sync_config)?
+    } else {
+        gitee::sync_download(&sync_config)?
+    };
 
-    // 下载附件
-    // 获取附件目录（可能由用户自定义）
-    let attach_root = config::get_effective_attachment_dir(&app)?;
-    let mut download_count = 0u32;
-    let mut download_errors = 0u32;
+    // 下载附件（仅 Gitee）
+    if !is_github {
+        let attach_root = config::get_effective_attachment_dir(&app)?;
+        let mut download_count = 0u32;
+        let mut download_errors = 0u32;
 
-    match gitee::list_repo_files(&sync_config, "attachments") {
-        Ok(files) => {
-            for remote_path in &files {
-                // remote_path 格式: "attachments/{noteId}/{filename}"
-                // 去掉 "attachments/" 前缀，得到相对路径
-                let relative_path = remote_path.strip_prefix("attachments/")
-                    .unwrap_or(remote_path);
-                let local_path = attach_root.join(relative_path);
+        match gitee::list_repo_files(&sync_config, "attachments") {
+            Ok(files) => {
+                for remote_path in &files {
+                    let relative_path = remote_path.strip_prefix("attachments/")
+                        .unwrap_or(remote_path);
+                    let local_path = attach_root.join(relative_path);
 
-                match gitee::download_attachment(&sync_config, remote_path) {
-                    Ok(base64_content) => {
-                        match decode_base64(&base64_content) {
-                            Ok(bytes) => {
-                                if let Some(parent) = local_path.parent() {
-                                    let _ = fs::create_dir_all(parent);
+                    match gitee::download_attachment(&sync_config, remote_path) {
+                        Ok(base64_content) => {
+                            match decode_base64(&base64_content) {
+                                Ok(bytes) => {
+                                    if let Some(parent) = local_path.parent() {
+                                        let _ = fs::create_dir_all(parent);
+                                    }
+                                    if let Err(_e) = fs::write(&local_path, &bytes) {
+                                        download_errors += 1;
+                                    } else {
+                                        download_count += 1;
+                                    }
                                 }
-                                if let Err(_e) = fs::write(&local_path, &bytes) {
-                                    download_errors += 1;
-                                } else {
-                                    download_count += 1;
-                                }
+                                Err(_) => { download_errors += 1; }
                             }
-                            Err(_) => { download_errors += 1; }
+                        }
+                        Err(e) => {
+                            download_errors += 1;
+                            let _ = e;
                         }
                     }
-                    Err(e) => {
-                        download_errors += 1;
-                        let _ = e;
+
+                    if download_count % 30 == 0 {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
                     }
                 }
 
-                // 限流保护
-                if download_count % 30 == 0 {
-                    std::thread::sleep(std::time::Duration::from_millis(500));
+                if !files.is_empty() {
+                    result.details.push(format!("附件下载: {} 成功, {} 失败", download_count, download_errors));
                 }
             }
-
-            if !files.is_empty() {
-                result.details.push(format!("附件下载: {} 成功, {} 失败", download_count, download_errors));
+            Err(e) => {
+                result.details.push(format!("列出远程附件目录失败: {}", e));
             }
-        }
-        Err(e) => {
-            result.details.push(format!("列出远程附件目录失败: {}", e));
         }
     }
 

@@ -94,7 +94,7 @@
         </svg>
       </button>
       <a id="btn-download-desktop" class="icon-btn" title="下载 Windows 桌面版" style="display:none"
-         href="https://pedometer-dweller-encounter.ngrok-free.dev/noteflow-images/NoteFlow_0.5.0_x64-setup.exe"
+         href="https://pedometer-dweller-encounter.ngrok-free.dev/noteflow-images/NoteFlow_1.0.0_x64-setup.exe"
          download>
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4">
           <!-- 显示器 -->
@@ -331,13 +331,20 @@
   </div>
   <div class="sync-panel-body">
     <div class="sync-field">
-      <label>Gitee 私人令牌 (Token)</label>
-      <input type="password" id="sync-token" placeholder="输入 Gitee Access Token" />
+      <label>同步平台</label>
+      <select id="sync-platform" style="width:100%;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);font-size:13px;">
+        <option value="gitee">Gitee</option>
+        <option value="github">GitHub</option>
+      </select>
+    </div>
+    <div class="sync-field">
+      <label id="sync-token-label">私人令牌 (Token)</label>
+      <input type="password" id="sync-token" placeholder="输入 Access Token" />
       <button class="sync-btn small" id="btn-test-token">测试连接</button>
     </div>
     <div class="sync-field">
-      <label>Gitee 用户名</label>
-      <input type="text" id="sync-owner" placeholder="你的 Gitee 用户名" />
+      <label id="sync-owner-label">用户名</label>
+      <input type="text" id="sync-owner" placeholder="你的用户名" />
     </div>
     <div class="sync-field">
       <label>仓库名称</label>

@@ -4,6 +4,7 @@ mod commands;
 mod config;
 mod error;
 mod gitee;
+mod github;
 mod minio;
 
 fn main() {

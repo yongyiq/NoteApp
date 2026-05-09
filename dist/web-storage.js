@@ -129,10 +129,19 @@ window.WebStorage = {
     localStorage.setItem('noteflow_sync_config', configJson);
   },
 
-  async test_gitee_connection(token) {
-    const res = await fetch(`https://gitee.com/api/v5/user?access_token=${encodeURIComponent(token)}`);
-    if (!res.ok) throw new Error('Token 无效或网络错误');
-    return JSON.stringify(await res.json());
+  async test_gitee_connection(token, platform) {
+    const plat = platform || 'gitee';
+    if (plat === 'github') {
+      const res = await fetch('https://api.github.com/user', {
+        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+      });
+      if (!res.ok) throw new Error('Token 无效或网络错误');
+      return JSON.stringify(await res.json());
+    } else {
+      const res = await fetch(`https://gitee.com/api/v5/user?access_token=${encodeURIComponent(token)}`);
+      if (!res.ok) throw new Error('Token 无效或网络错误');
+      return JSON.stringify(await res.json());
+    }
   },
 
   // ── Gitee API helper ─────────────────────
@@ -142,14 +151,39 @@ window.WebStorage = {
   _giteeApiBase(cfg) {
     return `https://gitee.com/api/v5/repos/${cfg.owner}/${cfg.repo}/contents`;
   },
+  // ── GitHub API helper ────────────────────
+  _githubApiBase(cfg) {
+    return `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents`;
+  },
+  _githubHeaders(cfg) {
+    return {
+      'Authorization': `Bearer ${cfg.token}`,
+      'Accept': 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json',
+    };
+  },
+  // ── 通用 helper ──────────────────────────
+  _isGithub(cfg) {
+    return cfg.platform === 'github';
+  },
+  _apiUrl(cfg, path) {
+    if (this._isGithub(cfg)) {
+      return `${this._githubApiBase(cfg)}/${this._encodePath(path)}`;
+    }
+    return `${this._giteeApiBase(cfg)}/${this._encodePath(path)}${this._giteeAuth(cfg)}`;
+  },
+  _fetchHeaders(cfg) {
+    if (this._isGithub(cfg)) return this._githubHeaders(cfg);
+    return { 'Content-Type': 'application/json' };
+  },
   // 将路径按 / 分段编码，避免整体 encodeURIComponent 把 / 编成 %2F
   _encodePath(path) {
     return path.split('/').map(s => encodeURIComponent(s)).join('/');
   },
   async _giteeGetSha(cfg, path) {
-    const url = `${this._giteeApiBase(cfg)}/${this._encodePath(path)}${this._giteeAuth(cfg)}`;
+    const url = this._apiUrl(cfg, path);
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { headers: this._isGithub(cfg) ? this._githubHeaders(cfg) : {} });
       if (res.ok) {
         const d = await res.json();
         if (d.sha) return d.sha;
@@ -159,15 +193,17 @@ window.WebStorage = {
   },
   async _giteeUploadFile(cfg, path, contentBase64, message) {
     const sha = await this._giteeGetSha(cfg, path);
-    const url = `${this._giteeApiBase(cfg)}/${this._encodePath(path)}${this._giteeAuth(cfg)}`;
+    const url = this._apiUrl(cfg, path);
     const body = JSON.stringify({
       message: message || `Upload: ${path}`,
       content: contentBase64,
       ...(sha ? { sha } : {}),
+      // Gitee 需要 access_token 在 body 中
+      ...(this._isGithub(cfg) ? {} : { access_token: cfg.token }),
     });
     const res = await fetch(url, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this._fetchHeaders(cfg),
       body,
     });
     if (!res.ok) {
@@ -176,9 +212,9 @@ window.WebStorage = {
     }
   },
   async _giteeListDir(cfg, path) {
-    const url = `${this._giteeApiBase(cfg)}/${this._encodePath(path)}${this._giteeAuth(cfg)}`;
+    const url = this._apiUrl(cfg, path);
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { headers: this._isGithub(cfg) ? this._githubHeaders(cfg) : {} });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) return data;
@@ -187,8 +223,8 @@ window.WebStorage = {
     return [];
   },
   async _giteeDownloadFile(cfg, path) {
-    const url = `${this._giteeApiBase(cfg)}/${this._encodePath(path)}${this._giteeAuth(cfg)}`;
-    const res = await fetch(url);
+    const url = this._apiUrl(cfg, path);
+    const res = await fetch(url, { headers: this._isGithub(cfg) ? this._githubHeaders(cfg) : {} });
     if (!res.ok) throw new Error(`下载 ${path} 失败: ${res.status}`);
     const d = await res.json();
     return d.content || ''; // base64
@@ -214,22 +250,22 @@ window.WebStorage = {
     utf8Bytes.forEach(b => { binaryStr += String.fromCharCode(b); });
     const payload = btoa(binaryStr);
     const path = cfg.path || 'note-data.json';
-    const auth = this._giteeAuth(cfg);
     let sha = '';
     try {
-      const getRes = await fetch(`${this._giteeApiBase(cfg)}/${this._encodePath(path)}${auth}`);
+      const getRes = await fetch(this._apiUrl(cfg, path), { headers: this._isGithub(cfg) ? this._githubHeaders(cfg) : {} });
       if (getRes.ok) { const d = await getRes.json(); sha = d.sha; }
     } catch(e) {}
 
-    const body = JSON.stringify({
+    const bodyObj = {
       message: `Sync: ${new Date().toISOString()}`,
       content: payload,
       ...(sha ? { sha } : {}),
-    });
-    const putRes = await fetch(`${this._giteeApiBase(cfg)}/${this._encodePath(path)}${auth}`, {
+      ...(this._isGithub(cfg) ? {} : { access_token: cfg.token }),
+    };
+    const putRes = await fetch(this._apiUrl(cfg, path), {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body,
+      headers: this._fetchHeaders(cfg),
+      body: JSON.stringify(bodyObj),
     });
     if (!putRes.ok) throw new Error('笔记数据上传失败');
 
@@ -273,12 +309,13 @@ window.WebStorage = {
     if (!configRaw) throw new Error('请先配置同步信息');
     const cfg = JSON.parse(configRaw);
     const path = cfg.path || 'note-data.json';
-    const url = `${this._giteeApiBase(cfg)}/${this._encodePath(path)}${this._giteeAuth(cfg)}`;
-    const res = await fetch(url);
+    const url = this._apiUrl(cfg, path);
+    const res = await fetch(url, { headers: this._isGithub(cfg) ? this._githubHeaders(cfg) : {} });
     if (!res.ok) throw new Error('下载失败');
     const d = await res.json();
+    const rawContent = (d.content || '').replace(/\n/g, '').replace(/\r/g, '');
     // 用 TextDecoder 正确处理中文（escape/unescape 已废弃）
-    const rawBytes = Uint8Array.from(atob(d.content), c => c.charCodeAt(0));
+    const rawBytes = Uint8Array.from(atob(rawContent), c => c.charCodeAt(0));
     const content = JSON.parse(new TextDecoder('utf-8').decode(rawBytes));
     const db = await this.openDB();
     const tx = db.transaction('notes', 'readwrite');

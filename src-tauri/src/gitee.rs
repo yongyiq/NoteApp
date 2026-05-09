@@ -22,10 +22,13 @@ const GITEE_API_BASE: &str = "https://gitee.com/api/v5";
 // 数据结构
 // ==========================================
 
-/// Gitee 同步配置（存储在本地）
+/// 云同步配置（支持 Gitee 和 GitHub）
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SyncConfig {
-    /// Gitee Personal Access Token
+    /// 同步平台: "gitee" 或 "github"
+    #[serde(default = "default_platform")]
+    pub platform: String,
+    /// Personal Access Token
     pub token: String,
     /// 仓库所有者（用户名或组织名）
     pub owner: String,
@@ -38,9 +41,14 @@ pub struct SyncConfig {
     pub last_sync: Option<String>,
 }
 
+fn default_platform() -> String {
+    "gitee".to_string()
+}
+
 impl Default for SyncConfig {
     fn default() -> Self {
         Self {
+            platform: "gitee".to_string(),
             token: String::new(),
             owner: String::new(),
             repo: String::new(),

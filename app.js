@@ -1563,12 +1563,15 @@ function openNote(id) {
       $('#btn-save-sync').addEventListener('click', () => this.saveConfig());
       $('#btn-sync-upload').addEventListener('click', () => this.upload());
       $('#btn-sync-download').addEventListener('click', () => this.download());
+      // 平台切换时更新 placeholder
+      $('#sync-platform').addEventListener('change', () => this.updatePlatformLabels());
       this.loadConfig();
     },
 
     open() {
       this.panel.style.display = 'flex';
-      this.log('就绪 — 请先配置 Gitee 令牌和仓库信息');
+      const plat = $('#sync-platform').value === 'github' ? 'GitHub' : 'Gitee';
+      this.log(`就绪 — 当前平台：${plat}，请配置令牌和仓库信息`);
     },
 
     close() {
@@ -1585,6 +1588,12 @@ function openNote(id) {
       this.logEl.textContent = '';
     },
 
+    updatePlatformLabels() {
+      const isGH = $('#sync-platform').value === 'github';
+      $('#sync-token').placeholder = isGH ? '输入 GitHub Personal Access Token' : '输入 Gitee Access Token';
+      $('#sync-owner').placeholder = isGH ? '你的 GitHub 用户名' : '你的 Gitee 用户名';
+    },
+
     async loadConfig() {
       try {
         const res = await invoke('load_sync_config');
@@ -1593,18 +1602,24 @@ function openNote(id) {
           $('#sync-token').value = cfg.token || '';
           $('#sync-owner').value = cfg.owner || '';
           $('#sync-repo').value = cfg.repo || '';
+          if (cfg.platform) {
+            $('#sync-platform').value = cfg.platform;
+          }
+          this.updatePlatformLabels();
         }
       } catch (e) { /* 无配置时忽略 */ }
     },
 
     async testConnection() {
       const token = $('#sync-token').value.trim();
-      if (!token) { this.log('❌ 请先输入 Gitee 令牌'); return; }
-      this.log('🔄 正在测试连接...');
+      const platform = $('#sync-platform').value;
+      const platName = platform === 'github' ? 'GitHub' : 'Gitee';
+      if (!token) { this.log(`❌ 请先输入 ${platName} 令牌`); return; }
+      this.log(`🔄 正在测试 ${platName} 连接...`);
       try {
-        const res = await invoke('test_gitee_connection', { token });
+        const res = await invoke('test_gitee_connection', { token, platform });
         const user = JSON.parse(res);
-        this.log(`✅ 连接成功！用户：${user.name || user.login}`);
+        this.log(`✅ ${platName} 连接成功！用户：${user.name || user.login}`);
       } catch (e) {
         this.log(`❌ 连接失败：${e}`);
       }
@@ -1614,6 +1629,7 @@ function openNote(id) {
       const token = $('#sync-token').value.trim();
       const owner = $('#sync-owner').value.trim();
       const repo = $('#sync-repo').value.trim();
+      const platform = $('#sync-platform').value;
       if (!token || !owner || !repo) {
         this.log('❌ Token、用户名和仓库名均为必填项');
         return;
@@ -1621,7 +1637,7 @@ function openNote(id) {
       this.log('💾 正在保存配置...');
       try {
         await invoke('save_sync_config', {
-          configJson: JSON.stringify({ token, owner, repo, path: '' })
+          configJson: JSON.stringify({ platform, token, owner, repo, path: '' })
         });
         this.log('✅ 配置已保存');
       } catch (e) {
@@ -1631,9 +1647,9 @@ function openNote(id) {
 
     async upload() {
       this.clearLog();
-      this.log('📤 正在推送笔记到 Gitee...');
+      const platName = $('#sync-platform').value === 'github' ? 'GitHub' : 'Gitee';
+      this.log(`📤 正在推送笔记到 ${platName}...`);
       try {
-        // 先保存当前正在编辑的笔记，确保数据最新
         if (State.currentId) await _writeNoteFile();
         const res = await invoke('sync_to_gitee');
         const result = JSON.parse(res);
@@ -1649,7 +1665,8 @@ function openNote(id) {
 
     async download() {
       this.clearLog();
-      this.log('📥 正在从 Gitee 拉取笔记...');
+      const platName = $('#sync-platform').value === 'github' ? 'GitHub' : 'Gitee';
+      this.log(`📥 正在从 ${platName} 拉取笔记...`);
       try {
         const res = await invoke('sync_from_gitee');
         const result = JSON.parse(res);
