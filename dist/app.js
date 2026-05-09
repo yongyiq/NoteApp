@@ -693,12 +693,28 @@ function openNote(id) {
     });
   });
 
+  // 使用 execCommand 插入文本，保留浏览器原生 Undo/Redo 栈
+  // 这样通过工具栏插入的格式也能用 Ctrl+Z 撤回
+  function _insertTextUndoable(ta, text) {
+    ta.focus();
+    // execCommand('insertText') 会替换当前选区并记录到 undo 栈
+    if (document.execCommand) {
+      document.execCommand('insertText', false, text);
+    } else {
+      // 极端 fallback：直接赋值（不支持撤回）
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      ta.value = ta.value.substring(0, start) + text + ta.value.substring(end);
+      const newPos = start + text.length;
+      ta.setSelectionRange(newPos, newPos);
+    }
+  }
+
   function insertMarkdown(action) {
     const ta = dom.mdEditor;
     const start = ta.selectionStart;
     const end = ta.selectionEnd;
     const sel = ta.value.substring(start, end);
-    const val = ta.value;
 
     let before = '', after = '', insert = '';
 
@@ -728,24 +744,19 @@ function openNote(id) {
         return;
     }
 
-    const newVal = val.substring(0, start) + before + insert + after + val.substring(end);
-    ta.value = newVal;
-    const newPos = start + before.length + insert.length + after.length;
-    ta.setSelectionRange(newPos, newPos);
+    const replacement = before + insert + after;
     ta.focus();
+    // 确保选区正确（选中原文本以便替换）
+    ta.setSelectionRange(start, end);
+    _insertTextUndoable(ta, replacement);
     setUnsaved(true);
     if (State.viewMode !== 'edit') updatePreview();
   }
 
   function insertTextAtCursor(text) {
     const ta = dom.mdEditor;
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
-    const val = ta.value;
-    ta.value = val.substring(0, start) + text + val.substring(end);
-    const newPos = start + text.length;
-    ta.setSelectionRange(newPos, newPos);
     ta.focus();
+    _insertTextUndoable(ta, text);
     setUnsaved(true);
     if (State.viewMode !== 'edit') updatePreview();
   }
