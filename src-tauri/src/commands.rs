@@ -389,6 +389,10 @@ pub fn export_all_data(app: AppHandle) -> Result<String, String> {
     let folders: Vec<Folder> = serde_json::from_str(&folders_str).unwrap_or_default();
     let settings: AppSettings = serde_json::from_str(&settings_str).unwrap_or_default();
 
+    // 加载 MinIO 配置，用于自动迁移旧二进制数据
+    let minio_config = config::load_minio_config(&app);
+    let minio_available = minio_config.is_valid();
+
     let mut notes: Vec<Note> = Vec::new();
     let notes_dir = get_notes_dir(&app)?;
 
@@ -410,16 +414,49 @@ pub fn export_all_data(app: AppHandle) -> Result<String, String> {
             Err(_) => continue,
         };
 
-        // PDF/图片：如果 content 已经是 MinIO URL，直接保留（不再读 .bin）
-        // 否则读取 .bin 文件，base64 编码后放入 content（兼容旧数据）
+        // PDF/图片：如果 content 已经是 MinIO URL，直接保留
+        // 如果有 .bin 文件且 MinIO 可用，自动上传到 MinIO 并替换 content 为 URL
+        // 否则读取 .bin 文件的 base64 作为 content（兜底）
         if !is_text_type(&note.note_type) {
             if note.content.starts_with("http") {
-                // MinIO URL，直接保留，不读 .bin
+                // 已经是 MinIO URL，直接保留
             } else {
                 let bin_path = notes_dir.join(format!("{}.bin", meta.id));
                 if bin_path.exists() {
                     if let Ok(bytes) = fs::read(&bin_path) {
-                        note.content = encode_base64(&bytes);
+                        if minio_available {
+                            // 自动迁移：上传 .bin 到 MinIO，content 存 URL
+                            let ext = meta.name.rsplit('.').next().unwrap_or("bin");
+                            let safe_name = format!("{}_{}.{}",
+                                meta.id,
+                                meta.created_at.to_string().chars().take(10).collect::<String>(),
+                                ext
+                            );
+                            let content_type = match ext {
+                                "pdf" => "application/pdf",
+                                "png" => "image/png",
+                                "jpg" | "jpeg" => "image/jpeg",
+                                "gif" => "image/gif",
+                                "webp" => "image/webp",
+                                "svg" => "image/svg+xml",
+                                _ => "application/octet-stream",
+                            };
+                            let key = format!("{}/{}", meta.id, safe_name);
+                            match minio::upload_object(&minio_config, &key, &bytes, content_type) {
+                                Ok(url) => {
+                                    note.content = url;
+                                    // 同时更新本地 JSON 文件，后续不再需要迁移
+                                    let _ = write_note_file(&app, &note);
+                                }
+                                Err(_) => {
+                                    // MinIO 上传失败，回退到 base64
+                                    note.content = encode_base64(&bytes);
+                                }
+                            }
+                        } else {
+                            // MinIO 不可用，使用 base64（兜底）
+                            note.content = encode_base64(&bytes);
+                        }
                     }
                 }
             }
