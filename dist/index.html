@@ -96,10 +96,17 @@
       <a id="btn-download-desktop" class="icon-btn" title="下载 Windows 桌面版" style="display:none"
          href="https://pedometer-dweller-encounter.ngrok-free.dev/noteflow-images/NoteFlow_0.5.0_x64-setup.exe"
          download>
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
-          <path d="M10 3v10"/>
-          <polyline points="6,9 10,13 14,9"/>
-          <path d="M4 15v2h12v-2"/>
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4">
+          <!-- 显示器 -->
+          <rect x="3" y="2" width="14" height="10" rx="1.5"/>
+          <line x1="8" y1="14" x2="12" y2="14"/>
+          <line x1="10" y1="12" x2="10" y2="14"/>
+          <!-- 下载箭头 -->
+          <path d="M10 5v4" stroke-width="1.8"/>
+          <polyline points="8,7.5 10,9.5 12,7.5" stroke-width="1.6"/>
+          <!-- Windows 四格标志 -->
+          <rect x="6" y="15.5" width="3.5" height="2.5" rx="0.3" fill="currentColor" stroke="none" opacity="0.5"/>
+          <rect x="10.5" y="15.5" width="3.5" height="2.5" rx="0.3" fill="currentColor" stroke="none" opacity="0.5"/>
         </svg>
       </a>
       <button id="btn-new-note" class="icon-btn primary-btn" title="新建笔记">
