@@ -1307,6 +1307,7 @@ pub fn delete_from_minio(
 #[tauri::command]
 pub fn fetch_ngrok_image(url: String) -> Result<String, String> {
     let client = reqwest::blocking::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -1315,6 +1316,10 @@ pub fn fetch_ngrok_image(url: String) -> Result<String, String> {
         .header("ngrok-skip-browser-warning", "true")
         .send()
         .map_err(|e| format!("Ngrok Fetch Error: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("HTTP Request Failed: {}", resp.status()));
+    }
 
     let bytes = resp.bytes().map_err(|e| e.to_string())?;
     let b64 = encode_base64(&bytes);
@@ -1330,8 +1335,10 @@ pub fn fetch_ngrok_image(url: String) -> Result<String, String> {
         "image/svg+xml"
     } else if lower_url.ends_with(".webp") {
         "image/webp"
+    } else if lower_url.ends_with(".pdf") {
+        "application/pdf"
     } else {
-        "image/jpeg"
+        "application/octet-stream"
     };
 
     Ok(format!("data:{};base64,{}", mime_type, b64))
