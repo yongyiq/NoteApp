@@ -505,9 +505,9 @@ function openNote(id) {
             if (isTauri()) {
               const dataUrl = await invoke('fetch_ngrok_image', { url: content });
               // dataUrl 是 data:xxx;base64,... 格式
-              const b64Part = dataUrl.split(',')[1] || dataUrl;
-              const bytes = base64ToUint8Array(b64Part);
-              State.blobUrls[id] = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+              const res = await fetch(dataUrl);
+              const blob = await res.blob();
+              State.blobUrls[id] = URL.createObjectURL(blob);
             } else {
               const resp = await fetch(content, { headers: { 'ngrok-skip-browser-warning': 'true' } });
               const blob = await resp.blob();
@@ -934,12 +934,14 @@ function openNote(id) {
     document.head.appendChild(script);
   }
 
-  function showPdfViewer(note) {
+  async function showPdfViewer(note) {
     dom.pdfContainer.style.display = 'flex';
     // 从 State.noteBinaries 加载二进制数据
     if (!State.blobUrls[note.id] && State.noteBinaries[note.id]) {
-      const bytes = base64ToUint8Array(State.noteBinaries[note.id]);
-      State.blobUrls[note.id] = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      const b64 = State.noteBinaries[note.id];
+      const res = await fetch(`data:application/pdf;base64,${b64}`);
+      const blob = await res.blob();
+      State.blobUrls[note.id] = URL.createObjectURL(blob);
     }
     const url = State.blobUrls[note.id];
     if (!url) { toast('PDF 文件数据丢失', 'danger'); return; }
@@ -1002,13 +1004,15 @@ function openNote(id) {
   // ─────────────────────────────────────────
   // IMAGE VIEWER
   // ─────────────────────────────────────────
-  function showImageViewer(note) {
+  async function showImageViewer(note) {
     dom.imgContainer.style.display = 'flex';
     // 从 State.noteBinaries 加载二进制数据
     if (!State.blobUrls[note.id] && State.noteBinaries[note.id]) {
-      const bytes = base64ToUint8Array(State.noteBinaries[note.id]);
       const mimeType = note.mimeType || guessImageMime(note.type);
-      State.blobUrls[note.id] = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+      const b64 = State.noteBinaries[note.id];
+      const res = await fetch(`data:${mimeType};base64,${b64}`);
+      const blob = await res.blob();
+      State.blobUrls[note.id] = URL.createObjectURL(blob);
     }
     dom.imgViewer.src = State.blobUrls[note.id] || '';
     State.imgScale = 1.0;
@@ -1126,13 +1130,6 @@ function openNote(id) {
     return new TextDecoder('utf-8').decode(bytes);
   }
 
-  // 辅助函数：将 Base64 解码为 Uint8Array
-  function base64ToUint8Array(base64) {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-  }
 
 
   // ArrayBuffer → Base64 编码
