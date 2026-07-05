@@ -5,13 +5,14 @@
   "identifier": "com.noteflow",
   "build": {
     "frontendDist": "../dist",
-    "beforeBuildCommand": "cmd /c build-frontend.bat",
+    "beforeBuildCommand": "node build-frontend.js",
     "beforeDevCommand": ""
   },
   "app": {
     "withGlobalTauri": true,
     "windows": [
       {
+        "label": "main",
         "title": "NoteFlow - 智能笔记",
         "width": 1280,
         "height": 800,
@@ -19,7 +20,8 @@
         "minHeight": 600,
         "resizable": true,
         "fullscreen": false,
-        "decorations": true
+        "decorations": true,
+        "dragDropEnabled": false
       }
     ],
     "security": {
@@ -29,6 +31,18 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "fileAssociations": [
+      {
+        "name": "Markdown Document",
+        "ext": ["md", "txt"],
+        "role": "Editor"
+      },
+      {
+        "name": "PDF Document",
+        "ext": ["pdf"],
+        "role": "Viewer"
+      }
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

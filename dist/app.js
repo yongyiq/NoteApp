@@ -413,6 +413,36 @@ console.log(greet('NoteFlow'));
 
       group.appendChild(header);
 
+      // 拖拽笔记到文件夹逻辑
+      group.addEventListener('dragover', (e) => {
+        e.preventDefault();
+      });
+      group.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        header.classList.add('drag-over');
+      });
+      group.addEventListener('dragleave', (e) => {
+        if (!group.contains(e.relatedTarget)) {
+          header.classList.remove('drag-over');
+        }
+      });
+      group.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        header.classList.remove('drag-over');
+        const noteId = e.dataTransfer.getData('text/plain');
+        if (noteId) {
+          const note = State.notes.find(n => n.id === noteId);
+          if (note && note.folderId !== folder.id) {
+            note.folderId = folder.id;
+            note.updatedAt = Date.now();
+            await _writeNoteFile(noteId);
+            renderSidebar();
+            toast(`已移动到 ${folder.name}`, 'success');
+          }
+        }
+      });
+
       const children = document.createElement('div');
       children.className = 'folder-children';
       children.style.display = folder.open ? '' : 'none';
@@ -435,6 +465,7 @@ console.log(greet('NoteFlow'));
     const el = document.createElement('div');
     el.className = `file-item file-type-${note.type === 'pdf' ? 'pdf' : (note.type === 'md' || note.type === 'txt') ? note.type : 'img'} ${State.currentId === note.id ? 'active' : ''}`;
     el.dataset.noteId = note.id;
+    el.draggable = true;
 
     let displayName = escHtml(note.name);
     if (query) {
@@ -454,6 +485,15 @@ console.log(greet('NoteFlow'));
 
     el.addEventListener('click', () => openNote(note.id));
     el.addEventListener('contextmenu', (e) => showNoteCtx(e, note.id));
+
+    el.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', note.id);
+      el.classList.add('dragging');
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('dragging');
+    });
+
     return el;
   }
 
@@ -956,18 +996,69 @@ function openNote(id) {
   }
 
   function renderPdfPage() {
-    if (!State.pdfDoc) return;
-    State.pdfDoc.getPage(State.pdfPage).then(page => {
+    if (!State.pdfDoc) return Promise.resolve();
+    return State.pdfDoc.getPage(State.pdfPage).then(page => {
       const vp = page.getViewport({ scale: State.pdfScale });
       const canvas = dom.pdfCanvas;
       const ctx = canvas.getContext('2d');
       canvas.height = vp.height;
       canvas.width  = vp.width;
-      page.render({ canvasContext: ctx, viewport: vp });
+      
       dom.pdfPageInput.value = State.pdfPage;
       dom.pdfZoomLevel.textContent = Math.round(State.pdfScale * 100) + '%';
+      
+      return page.render({ canvasContext: ctx, viewport: vp }).promise;
     });
   }
+
+  // 优化 PDF 翻页策略 (滚轮和键盘导航)
+  let isPdfRendering = false;
+  
+  async function turnPdfPage(delta) {
+    if (!State.pdfDoc || isPdfRendering) return;
+    const newPage = State.pdfPage + delta;
+    if (newPage >= 1 && newPage <= State.pdfDoc.numPages) {
+      isPdfRendering = true;
+      State.pdfPage = newPage;
+      const wrap = $('#pdf-viewer-wrap');
+      await renderPdfPage();
+      wrap.scrollTop = delta > 0 ? 0 : wrap.scrollHeight;
+      setTimeout(() => { isPdfRendering = false; }, 500); // 防抖冷却
+    }
+  }
+
+  $('#pdf-viewer-wrap').addEventListener('wheel', (e) => {
+    if (!State.pdfDoc) return;
+    const wrap = $('#pdf-viewer-wrap');
+    const atBottom = wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight - 5;
+    const atTop = wrap.scrollTop <= 5;
+
+    if (e.deltaY > 0 && atBottom) {
+      if (State.pdfPage < State.pdfDoc.numPages) {
+        e.preventDefault();
+        turnPdfPage(1);
+      }
+    } else if (e.deltaY < 0 && atTop) {
+      if (State.pdfPage > 1) {
+        e.preventDefault();
+        turnPdfPage(-1);
+      }
+    }
+  });
+
+  // 键盘翻页支持 (左右方向键)
+  document.addEventListener('keydown', (e) => {
+    if (dom.pdfContainer.style.display !== 'flex') return;
+    if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      turnPdfPage(1);
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      turnPdfPage(-1);
+    }
+  });
 
   $('#pdf-prev').addEventListener('click', () => {
     if (State.pdfPage > 1) { State.pdfPage--; renderPdfPage(); }
@@ -1104,6 +1195,24 @@ function openNote(id) {
 
   $('#btn-new-note').addEventListener('click', () => showNewNoteModal(null));
   $('#btn-new-folder').addEventListener('click', showNewFolderModal);
+
+  dom.fileList.addEventListener('dragover', (e) => {
+    e.preventDefault();
+  });
+  dom.fileList.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    const noteId = e.dataTransfer.getData('text/plain');
+    if (noteId) {
+      const note = State.notes.find(n => n.id === noteId);
+      if (note && note.folderId !== null) {
+        note.folderId = null;
+        note.updatedAt = Date.now();
+        await _writeNoteFile(noteId);
+        renderSidebar();
+        toast('已移动到根目录', 'success');
+      }
+    }
+  });
   $('#btn-welcome-new').addEventListener('click', () => showNewNoteModal(null));
   $('#btn-welcome-import').addEventListener('click', () => {
     dom.fileInput.click();
@@ -1133,6 +1242,7 @@ function openNote(id) {
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     return bytes;
   }
+
 
 
   // ArrayBuffer → Base64 编码
@@ -1221,6 +1331,75 @@ function openNote(id) {
     toast(`已导入 ${name}`, 'success');
   }
 
+  async function importAndOpenPath(path) {
+    try {
+      const fileData = await invoke('read_file_by_path', { path });
+      const name = fileData.name;
+      const ext  = name.split('.').pop().toLowerCase();
+      const id   = 'n' + Date.now() + Math.random().toString(36).slice(2,5);
+      const now  = Date.now();
+
+      let note;
+
+      if (ext === 'md' || ext === 'txt') {
+        const text = base64ToUtf8(fileData.contentBase64);
+        note = { id, folderId: null, name, type: ext, content: text, createdAt: now, updatedAt: now };
+        State.notes.unshift(note);
+        State.noteContents[id] = text;
+        await invoke('save_note', { noteJson: JSON.stringify({ id, folderId: null, name, type: ext, content: text, createdAt: now, updatedAt: now }), binaryBase64: '' });
+      } else if (ext === 'pdf') {
+        const base64 = fileData.contentBase64;
+        const bytes = base64ToUint8Array(base64);
+        const blob = new Blob([bytes], { type: 'application/pdf' });
+        const blobUrl = URL.createObjectURL(blob);
+
+        let pdfContentUrl = '';
+        if (isMinioEnabled()) {
+          try {
+            toast('正在上传 PDF 到 MinIO...', 'info');
+            const safeFilename = Date.now() + '_' + Math.random().toString(36).slice(2, 6) + '.' + ext;
+            pdfContentUrl = await uploadImageToMinio(id, safeFilename, base64, 'application/pdf');
+            toast('PDF 已上传到 MinIO', 'success');
+          } catch (e) {
+            console.error('MinIO PDF 上传失败，回退到本地存储:', e);
+            toast('MinIO 上传失败，使用本地存储', 'warning');
+            pdfContentUrl = '';
+          }
+        }
+
+        note = { id, folderId: null, name, type: 'pdf', blobUrl, createdAt: now, updatedAt: now };
+        State.notes.unshift(note);
+        State.noteBinaries[id] = base64;
+        State.blobUrls[id] = blobUrl;
+        await invoke('save_note', {
+          noteJson: JSON.stringify({ id, folderId: null, name, type: 'pdf', content: pdfContentUrl, createdAt: now, updatedAt: now }),
+          binaryBase64: pdfContentUrl ? '' : base64
+        });
+      } else if (['png','jpg','jpeg','gif','webp','svg'].includes(ext)) {
+        const base64 = fileData.contentBase64;
+        const bytes = base64ToUint8Array(base64);
+        const mimeMap = { png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg', gif:'image/gif', webp:'image/webp', svg:'image/svg+xml' };
+        const blob = new Blob([bytes], { type: mimeMap[ext] || 'image/*' });
+        const blobUrl = URL.createObjectURL(blob);
+        note = { id, folderId: null, name, type: ext, blobUrl, createdAt: now, updatedAt: now };
+        State.notes.unshift(note);
+        State.noteBinaries[id] = base64;
+        State.blobUrls[id] = blobUrl;
+        await invoke('save_note', { noteJson: JSON.stringify({ id, folderId: null, name, type: ext, content: '', createdAt: now, updatedAt: now }), binaryBase64: base64 });
+      } else {
+        toast(`不支持的文件类型: .${ext}`, 'danger');
+        return;
+      }
+
+      renderSidebar();
+      openNote(id);
+      toast(`已导入并打开 ${name}`, 'success');
+    } catch (e) {
+      console.error('importAndOpenPath failed:', e);
+      toast('无法打开该文件: ' + e, 'danger');
+    }
+  }
+
   // ─────────────────────────────────────────
   // CONTEXT MENU
   // ─────────────────────────────────────────
@@ -1233,6 +1412,11 @@ function openNote(id) {
         icon: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 11l7-9 4 4-9 7-2 0 0-2z"/></svg>`,
         label: '重命名',
         action: () => showRenameModal(noteId),
+      },
+      {
+        icon: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 3h4l1.5 1.5H14v8H2V3z"/><path d="M8 6v4M6 8l2 2 2-2"/></svg>`,
+        label: '移动到...',
+        action: () => showMoveNoteModal(noteId),
       },
       {
         icon: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 5h8v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5z"/><path d="M2 5h12M7 3h2a1 1 0 0 1 1 1v1H6V4a1 1 0 0 1 1-1z"/></svg>`,
@@ -1249,6 +1433,31 @@ function openNote(id) {
       });
     }
     showCtxMenu(e, items);
+  }
+
+  function showMoveNoteModal(noteId) {
+    const note = State.notes.find(n => n.id === noteId);
+    if (!note) return;
+    openModal('移动笔记', `
+      <div style="margin-top:12px">
+        <label style="display:block;margin-bottom:6px;font-size:13px;color:var(--text-secondary)">选择目标文件夹</label>
+        <select class="modal-input" id="modal-move-folder-sel" style="height:36px">
+          <option value="">无（根目录）</option>
+          ${State.folders.map(f => `<option value="${f.id}"${note.folderId===f.id?' selected':''}>${escHtml(f.name)}</option>`).join('')}
+        </select>
+      </div>
+    `, [
+      { label: '取消', cls: '', action: closeModal },
+      { label: '移动', cls: 'primary', action: async () => {
+        const folderId = $('#modal-move-folder-sel').value || null;
+        note.folderId = folderId;
+        note.updatedAt = Date.now();
+        await _writeNoteFile(noteId);
+        renderSidebar();
+        closeModal();
+        toast('笔记已移动', 'success');
+      }},
+    ]);
   }
 
   function showFolderCtx(e, folderId) {
@@ -2141,8 +2350,31 @@ function openNote(id) {
       if (dlBtn) dlBtn.style.display = '';
     }
 
-    if (State.notes.length > 0) {
+    let launched = false;
+    if (isTauri()) {
+      try {
+        const path = await invoke('get_launch_file');
+        if (path) {
+          await importAndOpenPath(path);
+          launched = true;
+        }
+      } catch (e) {
+        console.error('get_launch_file failed:', e);
+      }
+    }
+
+    if (!launched && State.notes.length > 0) {
       openNote(State.notes[0].id);
+    }
+
+    if (isTauri() && window.__TAURI__ && window.__TAURI__.event) {
+      window.__TAURI__.event.listen('single-instance', (event) => {
+        const payload = event.payload; // { args: [...], cwd: "..." }
+        if (payload && payload.args && payload.args.length > 1) {
+          const path = payload.args[1];
+          importAndOpenPath(path);
+        }
+      });
     }
 
     // Scroll sync

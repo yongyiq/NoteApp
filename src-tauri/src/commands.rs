@@ -1343,3 +1343,42 @@ pub fn fetch_ngrok_image(url: String) -> Result<String, String> {
 
     Ok(format!("data:{};base64,{}", mime_type, b64))
 }
+
+/// 获取启动时传递给应用程序的关联文件路径（如果有的话）
+#[tauri::command]
+pub fn get_launch_file() -> Option<String> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 {
+        // 第一参数是exe路径，第二参数通常是打开的文件路径
+        let path_str = &args[1];
+        let path = std::path::Path::new(path_str);
+        if path.exists() && path.is_file() {
+            return Some(path_str.clone());
+        }
+    }
+    None
+}
+
+/// 根据绝对路径读取文件元数据并转为 base64，供前端导入和展示
+#[tauri::command]
+pub fn read_file_by_path(path: String) -> Result<ImportedFile, String> {
+    let file_path = std::path::Path::new(&path);
+    if !file_path.exists() {
+        return Err("文件不存在".to_string());
+    }
+    let file_name = file_path
+        .file_name()
+        .ok_or("无法获取文件名")?
+        .to_string_lossy()
+        .to_string();
+
+    let bytes = fs::read(&file_path).map_err(|e| format!("无法读取文件: {}", e))?;
+    let mime_type = guess_mime_type(&file_name);
+    let content_base64 = encode_base64(&bytes);
+
+    Ok(ImportedFile {
+        name: file_name,
+        content_base64,
+        mime_type,
+    })
+}

@@ -7,10 +7,24 @@ mod gitee;
 mod github;
 mod minio;
 
+use tauri::{Manager, Emitter};
+
+#[derive(Clone, serde::Serialize)]
+struct SingleInstancePayload {
+    args: Vec<String>,
+    cwd: String,
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_focus();
+            }
+            let _ = app.emit("single-instance", SingleInstancePayload { args, cwd });
+        }))
         .invoke_handler(tauri::generate_handler![
             // 分文件存储 API（新）
             commands::load_index,
@@ -60,6 +74,8 @@ fn main() {
             commands::upload_to_minio,
             commands::delete_from_minio,
             commands::fetch_ngrok_image,
+            commands::get_launch_file,
+            commands::read_file_by_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

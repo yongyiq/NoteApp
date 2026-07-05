@@ -250,6 +250,15 @@ input { font-family: inherit; }
 .folder-toggle { margin-left: auto; transition: transform var(--transition); }
 .folder-toggle.open { transform: rotate(90deg); }
 
+.folder-item.drag-over {
+  background: var(--bg-hover) !important;
+  outline: 2px dashed var(--accent-primary) !important;
+  outline-offset: -2px;
+}
+.file-item.dragging {
+  opacity: 0.4;
+}
+
 .folder-children { padding-left: 8px; }
 
 .file-item {
