@@ -743,6 +743,27 @@ function openNote(id) {
   dom.mdEditor.addEventListener('keyup', updateCursorPos);
   dom.mdEditor.addEventListener('click', updateCursorPos);
 
+  dom.mdPreview.addEventListener('click', (e) => {
+    let target = e.target;
+    while (target && target !== dom.mdPreview) {
+      if (target.tagName === 'A') {
+        const href = target.getAttribute('href');
+        if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
+          e.preventDefault();
+          if (isTauri()) {
+            invoke('open_external_url', { url: href }).catch(err => {
+              console.error('Failed to open URL:', err);
+            });
+          } else {
+            window.open(href, '_blank');
+          }
+        }
+        break;
+      }
+      target = target.parentNode;
+    }
+  });
+
   function updateWordCount() {
     const text = dom.mdEditor.value;
     const chinese = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
@@ -1719,6 +1740,73 @@ function openNote(id) {
       dom.mdEditor.value = dom.mdEditor.value.substring(0, start) + '  ' + dom.mdEditor.value.substring(end);
       dom.mdEditor.setSelectionRange(start + 2, start + 2);
       setUnsaved(true);
+    } else if (e.key === 'Enter') {
+      const ta = dom.mdEditor;
+      const start = ta.selectionStart;
+      const val = ta.value;
+      
+      const lineStart = val.lastIndexOf('\n', start - 1) + 1;
+      const currentLine = val.substring(lineStart, start);
+      
+      // 1. 任务列表: e.g. "- [ ] ", "- [x] "
+      const taskListMatch = currentLine.match(/^(\s*[-*]\s+\[[ xX]\]\s*)(.*)/);
+      // 2. 无序列表: e.g. "- ", "* ", "+ "
+      const unorderedListMatch = currentLine.match(/^(\s*[-*+]\s+)(.*)/);
+      // 3. 有序列表: e.g. "1. "
+      const orderedListMatch = currentLine.match(/^(\s*(\d+)\.\s+)(.*)/);
+      
+      if (taskListMatch) {
+        e.preventDefault();
+        const prefix = taskListMatch[1];
+        const content = taskListMatch[2].trim();
+        
+        if (content === '') {
+          // 当前列表项为空，回车清除标记（结束列表）
+          ta.setSelectionRange(lineStart, start);
+          _insertTextUndoable(ta, '');
+        } else {
+          // 插入新列表行，强制转为未勾选状态 [ ]
+          const cleanPrefix = prefix.replace(/\[[xX]\]/, '[ ]');
+          _insertTextUndoable(ta, '\n' + cleanPrefix);
+        }
+        setUnsaved(true);
+        updatePreview();
+      } else if (unorderedListMatch) {
+        e.preventDefault();
+        const prefix = unorderedListMatch[1];
+        const content = unorderedListMatch[2].trim();
+        
+        if (content === '') {
+          // 当前列表项为空，回车清除标记
+          ta.setSelectionRange(lineStart, start);
+          _insertTextUndoable(ta, '');
+        } else {
+          // 延续列表
+          _insertTextUndoable(ta, '\n' + prefix);
+        }
+        setUnsaved(true);
+        updatePreview();
+      } else if (orderedListMatch) {
+        e.preventDefault();
+        const prefix = orderedListMatch[1];
+        const num = parseInt(orderedListMatch[2], 10);
+        const content = orderedListMatch[3].trim();
+        
+        if (content === '') {
+          // 当前列表项为空，回车清除标记
+          ta.setSelectionRange(lineStart, start);
+          _insertTextUndoable(ta, '');
+        } else {
+          // 序号递增
+          const newNum = num + 1;
+          const spacesMatch = prefix.match(/^(\s*)/);
+          const spaces = spacesMatch ? spacesMatch[1] : '';
+          const newPrefix = `${spaces}${newNum}. `;
+          _insertTextUndoable(ta, '\n' + newPrefix);
+        }
+        setUnsaved(true);
+        updatePreview();
+      }
     }
   });
 

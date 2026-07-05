@@ -76,6 +76,7 @@ fn main() {
             commands::fetch_ngrok_image,
             commands::get_launch_file,
             commands::read_file_by_path,
+            commands::open_external_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
