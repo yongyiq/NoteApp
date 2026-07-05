@@ -1,0 +1,5 @@
+{
+	"outdir": "dist",
+	"site": "noteflow",
+	"build": "build"
+}

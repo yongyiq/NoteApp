@@ -1030,8 +1030,8 @@ function openNote(id) {
   $('#pdf-viewer-wrap').addEventListener('wheel', (e) => {
     if (!State.pdfDoc) return;
     const wrap = $('#pdf-viewer-wrap');
-    const atBottom = wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight - 5;
-    const atTop = wrap.scrollTop <= 5;
+    const atBottom = wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight - 20;
+    const atTop = wrap.scrollTop <= 20;
 
     if (e.deltaY > 0 && atBottom) {
       if (State.pdfPage < State.pdfDoc.numPages) {

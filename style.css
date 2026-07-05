@@ -606,7 +606,7 @@ input { font-family: inherit; }
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 24px;
+  padding: 0;
 }
 #pdf-viewer-wrap::-webkit-scrollbar { width: 8px; height: 8px; }
 #pdf-viewer-wrap::-webkit-scrollbar-thumb { background: var(--border-medium); border-radius: 4px; }
@@ -614,6 +614,7 @@ input { font-family: inherit; }
 #pdf-canvas {
   box-shadow: var(--shadow-md);
   display: block;
+  margin: 24px;
 }
 
 /* ==================== IMG VIEWER ==================== */
@@ -1020,7 +1021,8 @@ input { font-family: inherit; }
 
   /* ── PDF 查看器 ── */
   .pdf-toolbar { padding: 6px 10px; gap: 4px; font-size: 12px; }
-  #pdf-viewer-wrap { padding: 10px; }
+  #pdf-viewer-wrap { padding: 0; }
+  #pdf-canvas { margin: 10px; }
 
   /* ── 欢迎页 ── */
   .welcome-inner { padding: 24px 16px; }

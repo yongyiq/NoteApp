@@ -6,8 +6,10 @@
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
-    "build": "tauri build",
-    "serve": "npx serve -l 1420 ."
+    "build": "node build-frontend.js",
+    "build:desktop": "tauri build",
+    "serve": "npx serve -l 1420 dist",
+    "deploy": "deno -Ar https://host.retiehe.com/cli deploy"
   },
   "keywords": [],
   "author": "",
