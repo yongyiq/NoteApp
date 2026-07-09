@@ -1087,3 +1087,86 @@ input { font-family: inherit; }
   #md-editor { padding: 12px 10px; }
   #md-preview { padding: 12px 10px; }
 }
+
+/* ==================== VISUAL TABLE EDITOR ==================== */
+#modal-box.wide-modal {
+  max-width: 720px;
+}
+.table-editor-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.table-editor-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.table-editor-scroll {
+  max-height: 350px;
+  overflow: auto;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+#te-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+#te-table th, #te-table td {
+  padding: 6px 8px;
+  border: 1px solid var(--border-medium);
+}
+#te-table th {
+  background: var(--bg-secondary);
+  font-weight: 600;
+  vertical-align: top;
+}
+.te-header-input, .te-cell-input {
+  width: 100%;
+  border: none !important;
+  background: transparent !important;
+  outline: none !important;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
+}
+.te-header-input {
+  font-weight: bold;
+}
+.te-header-input:focus, .te-cell-input:focus {
+  background: var(--bg-hover) !important;
+  box-shadow: 0 0 0 1px var(--accent-primary) inset;
+}
+.te-align-toolbar {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 6px;
+  border-top: 1px solid var(--border-light);
+  padding-top: 6px;
+}
+.te-align-btn {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-medium);
+  cursor: pointer;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition);
+}
+.te-align-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+.te-align-btn.active {
+  background: var(--accent-primary) !important;
+  color: #ffffff !important;
+  border-color: var(--accent-primary) !important;
+}
+

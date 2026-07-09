@@ -838,9 +838,8 @@ function openNote(id) {
       case 'hr':          before = '\n\n---\n\n'; after = ''; insert = ''; break;
       case 'link':        before = '['; after = '](https://)'; insert = sel || '链接文字'; break;
       case 'table':
-        insert = '\n| 列1 | 列2 | 列3 |\n|-----|-----|-----|\n| 内容 | 内容 | 内容 |\n';
-        before = ''; after = '';
-        break;
+        showTableEditorModal();
+        return;
       case 'codeblock':
         insert = `\n\`\`\`javascript\n${sel || '// 代码'}\n\`\`\`\n`;
         before = ''; after = '';
@@ -865,6 +864,288 @@ function openNote(id) {
     _insertTextUndoable(ta, text);
     setUnsaved(true);
     if (State.viewMode !== 'edit') updatePreview();
+  }
+
+  function getTableBlockAtCursor() {
+    const ta = dom.mdEditor;
+    const text = ta.value;
+    const cursor = ta.selectionStart;
+
+    const lines = text.split('\n');
+
+    let charCount = 0;
+    let cursorLineIndex = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const lineLength = lines[i].length + 1;
+      if (cursor >= charCount && cursor <= charCount + lineLength) {
+        cursorLineIndex = i;
+        break;
+      }
+      charCount += lineLength;
+    }
+
+    if (cursorLineIndex === -1) return null;
+    if (!lines[cursorLineIndex].includes('|')) return null;
+
+    let startLine = cursorLineIndex;
+    while (startLine > 0 && lines[startLine - 1].includes('|')) {
+      startLine--;
+    }
+
+    let endLine = cursorLineIndex;
+    while (endLine < lines.length - 1 && lines[endLine + 1].includes('|')) {
+      endLine++;
+    }
+
+    if (endLine - startLine < 1) return null;
+
+    const tableLines = lines.slice(startLine, endLine + 1);
+
+    let startIdx = 0;
+    for (let i = 0; i < startLine; i++) {
+      startIdx += lines[i].length + 1;
+    }
+    let endIdx = startIdx;
+    for (let i = startLine; i <= endLine; i++) {
+      endIdx += lines[i].length + (i === lines.length - 1 ? 0 : 1);
+    }
+
+    return {
+      lines: tableLines,
+      startIdx,
+      endIdx
+    };
+  }
+
+  function parseMarkdownTable(tableLines) {
+    function splitRow(line) {
+      let clean = line.trim();
+      if (clean.startsWith('|')) clean = clean.slice(1);
+      if (clean.endsWith('|')) clean = clean.slice(0, -1);
+      return clean.split('|').map(cell => cell.trim());
+    }
+
+    const headers = splitRow(tableLines[0]);
+    const separatorCells = splitRow(tableLines[1]);
+
+    const alignments = separatorCells.map(cell => {
+      const left = cell.startsWith(':');
+      const right = cell.endsWith(':');
+      if (left && right) return 'center';
+      if (right) return 'right';
+      return 'left';
+    });
+
+    const rows = [];
+    for (let i = 2; i < tableLines.length; i++) {
+      if (!tableLines[i].includes('|')) continue;
+      const cells = splitRow(tableLines[i]);
+      while (cells.length < headers.length) {
+        cells.push('');
+      }
+      if (cells.length > headers.length) {
+        cells.splice(headers.length);
+      }
+      rows.push(cells);
+    }
+
+    return { headers, alignments, rows };
+  }
+
+  function showTableEditorModal() {
+    const detectedTable = getTableBlockAtCursor();
+    let teState;
+
+    if (detectedTable) {
+      teState = parseMarkdownTable(detectedTable.lines);
+    } else {
+      teState = {
+        headers: ['表头 1', '表头 2', '表头 3'],
+        alignments: ['left', 'left', 'left'],
+        rows: [
+          ['', '', ''],
+          ['', '', '']
+        ]
+      };
+    }
+
+    $('#modal-box').classList.add('wide-modal');
+
+    openModal('可视化表格编辑器', `
+      <div class="table-editor-modal-content">
+        <div class="table-editor-toolbar">
+          <button type="button" class="btn te-action-btn" id="te-add-row" title="在下方添加行" style="padding:4px 8px; font-size:12px; background:var(--bg-secondary); border:1px solid var(--border-medium); cursor:pointer; color:var(--text-primary); border-radius:var(--radius-sm);">添加行 ➕</button>
+          <button type="button" class="btn te-action-btn te-btn-danger" id="te-del-row" title="删除行" style="padding:4px 8px; font-size:12px; background:var(--bg-secondary); border:1px solid var(--border-medium); cursor:pointer; color:var(--text-primary); border-radius:var(--radius-sm);">删除行 ➖</button>
+          <button type="button" class="btn te-action-btn" id="te-add-col" title="在右侧添加列" style="padding:4px 8px; font-size:12px; background:var(--bg-secondary); border:1px solid var(--border-medium); cursor:pointer; color:var(--text-primary); border-radius:var(--radius-sm);">添加列 ➕</button>
+          <button type="button" class="btn te-action-btn te-btn-danger" id="te-del-col" title="删除列" style="padding:4px 8px; font-size:12px; background:var(--bg-secondary); border:1px solid var(--border-medium); cursor:pointer; color:var(--text-primary); border-radius:var(--radius-sm);">删除列 ➖</button>
+        </div>
+        <div class="table-editor-scroll">
+          <table id="te-table">
+            <thead>
+              <tr id="te-thead-row"></tr>
+            </thead>
+            <tbody id="te-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    `, [
+      { label: '取消', cls: '', action: closeModal },
+      { label: '确定', cls: 'primary', action: () => {
+        const finalState = readTableFromDom();
+        const newMarkdownTable = generateMarkdownTable(finalState);
+
+        const ta = dom.mdEditor;
+        ta.focus();
+        if (detectedTable) {
+          ta.setSelectionRange(detectedTable.startIdx, detectedTable.endIdx);
+          _insertTextUndoable(ta, newMarkdownTable);
+        } else {
+          _insertTextUndoable(ta, '\n' + newMarkdownTable + '\n');
+        }
+
+        setUnsaved(true);
+        updatePreview();
+        closeModal();
+      }}
+    ]);
+
+    renderTable(teState);
+
+    $('#te-add-row').addEventListener('click', () => {
+      const curState = readTableFromDom();
+      curState.rows.push(Array(curState.headers.length).fill(''));
+      renderTable(curState);
+    });
+
+    $('#te-del-row').addEventListener('click', () => {
+      const curState = readTableFromDom();
+      if (curState.rows.length > 1) {
+        curState.rows.pop();
+        renderTable(curState);
+      }
+    });
+
+    $('#te-add-col').addEventListener('click', () => {
+      const curState = readTableFromDom();
+      curState.headers.push(`表头 ${curState.headers.length + 1}`);
+      curState.alignments.push('left');
+      curState.rows.forEach(r => r.push(''));
+      renderTable(curState);
+    });
+
+    $('#te-del-col').addEventListener('click', () => {
+      const curState = readTableFromDom();
+      if (curState.headers.length > 1) {
+        curState.headers.pop();
+        curState.alignments.pop();
+        curState.rows.forEach(r => r.pop());
+        renderTable(curState);
+      }
+    });
+  }
+
+  function renderTable(state) {
+    const theadRow = $('#te-thead-row');
+    const tbody = $('#te-tbody');
+
+    theadRow.innerHTML = '';
+    tbody.innerHTML = '';
+
+    state.headers.forEach((h, colIdx) => {
+      const align = state.alignments[colIdx] || 'left';
+      const th = document.createElement('th');
+      th.style.padding = '8px';
+      th.style.border = '1px solid var(--border-medium)';
+      th.style.background = 'var(--bg-secondary)';
+      th.style.minWidth = '120px';
+      th.dataset.align = align;
+
+      th.innerHTML = `
+        <input type="text" class="te-header-input" value="${escHtml(h)}" style="width:100%; font-weight:bold; border:none; background:transparent; outline:none; color:var(--text-primary); text-align:${align};">
+        <div class="te-align-toolbar">
+          <button type="button" class="te-align-btn te-align-left ${align === 'left' ? 'active' : ''}" data-align="left" title="左对齐">左</button>
+          <button type="button" class="te-align-btn te-align-center ${align === 'center' ? 'active' : ''}" data-align="center" title="居中对齐">中</button>
+          <button type="button" class="te-align-btn te-align-right ${align === 'right' ? 'active' : ''}" data-align="right" title="右对齐">右</button>
+        </div>
+      `;
+
+      th.querySelectorAll('.te-align-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const newAlign = btn.dataset.align;
+          th.dataset.align = newAlign;
+          th.querySelector('.te-header-input').style.textAlign = newAlign;
+
+          const trs = Array.from(tbody.querySelectorAll('tr'));
+          trs.forEach(tr => {
+            const cellInput = tr.children[colIdx].querySelector('.te-cell-input');
+            if (cellInput) cellInput.style.textAlign = newAlign;
+          });
+
+          th.querySelectorAll('.te-align-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        });
+      });
+
+      theadRow.appendChild(th);
+    });
+
+    state.rows.forEach((row) => {
+      const tr = document.createElement('tr');
+      row.forEach((cellVal, colIdx) => {
+        const align = state.alignments[colIdx] || 'left';
+        const td = document.createElement('td');
+        td.style.padding = '8px';
+        td.style.border = '1px solid var(--border-medium)';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'te-cell-input';
+        input.value = cellVal;
+        input.style.width = '100%';
+        input.style.border = 'none';
+        input.style.background = 'transparent';
+        input.style.outline = 'none';
+        input.style.color = 'var(--text-primary)';
+        input.style.textAlign = align;
+
+        td.appendChild(input);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  function readTableFromDom() {
+    const headers = Array.from(document.querySelectorAll('.te-header-input')).map(input => input.value.trim());
+
+    const ths = Array.from(document.querySelectorAll('#te-thead-row th'));
+    const alignments = ths.map(th => th.dataset.align || 'left');
+
+    const rows = [];
+    const trs = Array.from(document.querySelectorAll('#te-tbody tr'));
+    trs.forEach(tr => {
+      const row = Array.from(tr.querySelectorAll('.te-cell-input')).map(input => input.value);
+      rows.push(row);
+    });
+
+    return { headers, alignments, rows };
+  }
+
+  function generateMarkdownTable(state) {
+    const headerLine = '| ' + state.headers.map(h => h || ' ').join(' | ') + ' |';
+
+    const dividerLine = '| ' + state.alignments.map(align => {
+      if (align === 'center') return ':---:';
+      if (align === 'right') return '---:';
+      return '---';
+    }).join(' | ') + ' |';
+
+    const dataLines = state.rows.map(row => {
+      return '| ' + row.map(cell => cell || ' ').join(' | ') + ' |';
+    });
+
+    return [headerLine, dividerLine, ...dataLines].join('\n') + '\n';
   }
 
   // Insert image: handle file input change (MinIO or local attachment)
@@ -1827,7 +2108,10 @@ function openNote(id) {
     dom.modalOverlay.style.display = 'flex';
   }
 
-  function closeModal() { dom.modalOverlay.style.display = 'none'; }
+  function closeModal() {
+    $('#modal-box').classList.remove('wide-modal');
+    dom.modalOverlay.style.display = 'none';
+  }
 
   $('#modal-close').addEventListener('click', closeModal);
   dom.modalOverlay.addEventListener('click', (e) => { if (e.target === dom.modalOverlay) closeModal(); });
