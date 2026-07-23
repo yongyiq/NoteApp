@@ -1,7 +1,7 @@
 # 欢迎使用 NoteFlow 
 # Web链接：https://noteflow.rth1.xyz/ (内涵windows桌面版安装包)
 # 海外版Web链接：https://note-app-coral-seven.vercel.app/
-
+# github连接：https://github.com/yongyiq/NoteApp
 NoteFlow 是一款支持 **Markdown 渲染**、**PDF 查看**和**图片预览**的智能笔记软件。
 
 ## 功能特色
