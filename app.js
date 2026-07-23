@@ -3000,6 +3000,62 @@ function openNote(id) {
       if (btnSettings) btnSettings.addEventListener('click', () => this.openSettingsModal());
       if (btnOpenConfig) btnOpenConfig.addEventListener('click', () => this.openSettingsModal());
 
+      // 拖拽改变 AI 面板与主面板的大小 (Resizable Divider)
+      const resizer = document.getElementById('ai-resizer');
+      let isResizing = false;
+      let startX = 0;
+      let startWidth = 340;
+
+      try {
+        const savedW = localStorage.getItem('noteflow_ai_panel_width');
+        if (savedW) {
+          const w = parseInt(savedW, 10);
+          if (w >= 240 && w <= 800) {
+            aiPanel.style.width = w + 'px';
+          }
+        }
+      } catch (e) {}
+
+      if (resizer) {
+        resizer.addEventListener('mousedown', (e) => {
+          isResizing = true;
+          startX = e.clientX;
+          startWidth = aiPanel.getBoundingClientRect().width;
+          aiPanel.classList.add('is-resizing');
+          resizer.classList.add('active');
+          document.body.style.cursor = 'col-resize';
+          document.body.style.userSelect = 'none';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+          if (!isResizing) return;
+          const dx = startX - e.clientX; // 向左拖拽放大，向右拖拽缩小
+          let newWidth = startWidth + dx;
+
+          const minW = 260;
+          const maxW = Math.min(Math.floor(window.innerWidth * 0.7), 750);
+
+          if (newWidth < minW) newWidth = minW;
+          if (newWidth > maxW) newWidth = maxW;
+
+          aiPanel.style.width = newWidth + 'px';
+        });
+
+        document.addEventListener('mouseup', () => {
+          if (isResizing) {
+            isResizing = false;
+            aiPanel.classList.remove('is-resizing');
+            resizer.classList.remove('active');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            const finalW = aiPanel.getBoundingClientRect().width;
+            try {
+              localStorage.setItem('noteflow_ai_panel_width', Math.round(finalW));
+            } catch (e) {}
+          }
+        });
+      }
+
       if (btnClear) {
         btnClear.addEventListener('click', () => {
           this.chatHistory = [];
