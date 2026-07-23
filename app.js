@@ -68,6 +68,12 @@
     blobUrls: {},      // { [noteId]: blobUrl }
     minioConfig: null,  // { endpoint, bucket, accessKey, secretKey, enabled, region }
     attachmentCache: {}, // { "noteId/filename": base64 }
+    aiConfig: {
+      apiKey: '',
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-chat',
+      temperature: 0.7
+    },
   };
 
   // ─────────────────────────────────────────
@@ -250,8 +256,10 @@
   // ─────────────────────────────────────────
   // DEFAULT CONTENT
   // ─────────────────────────────────────────
-  const welcomeMd = `# 欢迎使用 NoteFlow
-
+  const welcomeMd = `# 欢迎使用 NoteFlow 
+# Web链接：https://noteflow.rth1.xyz/ (内含windows桌面版安装包)
+# 海外版Web链接：https://note-app-coral-seven.vercel.app/
+# github连接：https://github.com/yongyiq/NoteApp
 NoteFlow 是一款支持 **Markdown 渲染**、**PDF 查看**和**图片预览**的智能笔记软件。
 
 ## 功能特色
@@ -271,7 +279,7 @@ NoteFlow 是一款支持 **Markdown 渲染**、**PDF 查看**和**图片预览**
 
 \`\`\`javascript
 function greet(name) {
-  return \`Hello, ${name}!\`;
+  return \`Hello, \${name}!\`;
 }
 console.log(greet('NoteFlow'));
 \`\`\`
@@ -298,6 +306,12 @@ console.log(greet('NoteFlow'));
 | \`Ctrl+D\` | 删除当前行 |
 
 ---
+## NoteFlow 的设计逻辑是 **导入/克隆** 机制，而非“直接编辑源文件”：
+
+
+1. 列表项导入时：当您将 .md 文件拖入或导入软件时，NoteFlow 会读取该文件里的文本内容，然后在软件的私有数据目录中，为它单独创建一个专属的新笔记文件（格式为 notes/{笔记ID}.json）。
+2. 编辑时：您在软件里做出的所有修改，都会实时保存到软件内部的私有数据目录中（并在配置了同步后自动同步到云端的 GitHub/Gitee 仓库），完全不会影响或修改您电脑上原本那个位置的源文件。
+3. 如果您需要将修改后的笔记重新保存到电脑的某个地方，可以使用右键菜单中的 **导出** 功能，将它以 .md 文件的形式另存出来。
 
 *开始创作你的第一篇笔记吧！*
 `;
@@ -2691,6 +2705,490 @@ function openNote(id) {
     }
   }
 
+
+
+  // ─────────────────────────────────────────
+  // AI ASSISTANT MODULE
+  // ─────────────────────────────────────────
+  const AiAssistant = {
+    chatHistory: [],
+    isGenerating: false,
+
+    loadConfig() {
+      try {
+        const saved = localStorage.getItem('noteflow_ai_config');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          State.aiConfig = { ...State.aiConfig, ...parsed };
+        }
+      } catch (e) {
+        console.error('[AI] 读取配置失败:', e);
+      }
+      this.updateBadge();
+    },
+
+    saveConfig(cfg) {
+      State.aiConfig = { ...State.aiConfig, ...cfg };
+      try {
+        localStorage.setItem('noteflow_ai_config', JSON.stringify(State.aiConfig));
+      } catch (e) {
+        console.error('[AI] 保存配置失败:', e);
+      }
+      this.updateBadge();
+    },
+
+    updateBadge() {
+      const badge = document.getElementById('ai-status-badge');
+      if (!badge) return;
+      const { apiKey, baseUrl, model } = State.aiConfig;
+      const isLocal = baseUrl && (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1'));
+      if (apiKey || isLocal) {
+        badge.textContent = model || '已配置';
+        badge.classList.add('configured');
+      } else {
+        badge.textContent = '未配置';
+        badge.classList.remove('configured');
+      }
+    },
+
+    openSettingsModal() {
+      const { apiKey, baseUrl, model, temperature } = State.aiConfig;
+
+      openModal('AI 智能助手设置', `
+        <div style="display:flex; flex-direction:column; gap:12px; font-size:13px">
+          <div>
+            <label style="display:block; margin-bottom:4px; color:var(--text-secondary)">快捷预设提供商</label>
+            <select class="modal-input" id="modal-ai-preset" style="height:34px">
+              <option value="custom">自定义 / Custom</option>
+              <option value="deepseek">DeepSeek (官方 API)</option>
+              <option value="openai">OpenAI (官方 API)</option>
+              <option value="siliconflow">SiliconFlow 硅基流动</option>
+              <option value="kimi">Kimi (Moonshot)</option>
+              <option value="ollama">Ollama (本地运行)</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block; margin-bottom:4px; color:var(--text-secondary)">API Key (秘钥)</label>
+            <div style="position:relative">
+              <input class="modal-input" id="modal-ai-key" type="password" placeholder="sk-..." value="${escHtml(apiKey)}">
+              <button type="button" id="btn-toggle-key-vis" style="position:absolute; right:8px; top:8px; background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:12px">显示</button>
+            </div>
+          </div>
+          <div>
+            <label style="display:block; margin-bottom:4px; color:var(--text-secondary)">API Base URL (端点地址)</label>
+            <input class="modal-input" id="modal-ai-base" type="text" placeholder="https://api.deepseek.com" value="${escHtml(baseUrl)}">
+          </div>
+          <div>
+            <label style="display:block; margin-bottom:4px; color:var(--text-secondary)">Model (模型名称)</label>
+            <input class="modal-input" id="modal-ai-model" type="text" placeholder="deepseek-chat" value="${escHtml(model)}">
+          </div>
+          <div>
+            <label style="display:flex; justify-content:space-between; margin-bottom:4px; color:var(--text-secondary)">
+              <span>Temperature (随机度/创造力)</span>
+              <span id="temp-val">${temperature}</span>
+            </label>
+            <input type="range" id="modal-ai-temp" min="0" max="1" step="0.1" value="${temperature}" style="width:100%">
+          </div>
+        </div>
+      `, [
+        {
+          label: '测试连接',
+          cls: '',
+          action: async () => {
+            const testKey = $('#modal-ai-key').value.trim();
+            const testBase = $('#modal-ai-base').value.trim();
+            const testModel = $('#modal-ai-model').value.trim();
+            if (!testBase) { toast('请先输入 Base URL', 'warning'); return; }
+            toast('正在测试 AI 连接...', 'info');
+            try {
+              const res = await this.testConnection(testKey, testBase, testModel);
+              if (res.ok) {
+                toast('✅ API 连接测试成功！', 'success');
+              } else {
+                toast(`❌ 连接失败: ${res.error}`, 'danger');
+              }
+            } catch (err) {
+              toast(`❌ 请求出错: ${err.message || err}`, 'danger');
+            }
+          }
+        },
+        { label: '取消', cls: '', action: closeModal },
+        {
+          label: '保存设置',
+          cls: 'primary',
+          action: () => {
+            const key = $('#modal-ai-key').value.trim();
+            const base = $('#modal-ai-base').value.trim();
+            const mdl = $('#modal-ai-model').value.trim();
+            const temp = parseFloat($('#modal-ai-temp').value);
+            this.saveConfig({ apiKey: key, baseUrl: base, model: mdl, temperature: temp });
+            closeModal();
+            toast('AI 设置已保存', 'success');
+          }
+        }
+      ]);
+
+      const presetSel = $('#modal-ai-preset');
+      const keyInput = $('#modal-ai-key');
+      const baseInput = $('#modal-ai-base');
+      const modelInput = $('#modal-ai-model');
+      const visBtn = $('#btn-toggle-key-vis');
+      const tempRange = $('#modal-ai-temp');
+      const tempVal = $('#temp-val');
+
+      tempRange.addEventListener('input', (e) => { tempVal.textContent = e.target.value; });
+
+      visBtn.addEventListener('click', () => {
+        if (keyInput.type === 'password') {
+          keyInput.type = 'text';
+          visBtn.textContent = '隐藏';
+        } else {
+          keyInput.type = 'password';
+          visBtn.textContent = '显示';
+        }
+      });
+
+      presetSel.addEventListener('change', (e) => {
+        const val = e.target.value;
+        if (val === 'deepseek') {
+          baseInput.value = 'https://api.deepseek.com';
+          modelInput.value = 'deepseek-chat';
+        } else if (val === 'openai') {
+          baseInput.value = 'https://api.openai.com/v1';
+          modelInput.value = 'gpt-4o-mini';
+        } else if (val === 'siliconflow') {
+          baseInput.value = 'https://api.siliconflow.cn/v1';
+          modelInput.value = 'deepseek-ai/DeepSeek-V3';
+        } else if (val === 'kimi') {
+          baseInput.value = 'https://api.moonshot.cn/v1';
+          modelInput.value = 'moonshot-v1-8k';
+        } else if (val === 'ollama') {
+          baseInput.value = 'http://localhost:11434/v1';
+          modelInput.value = 'llama3';
+        }
+      });
+    },
+
+    async testConnection(apiKey, baseUrl, model) {
+      let cleanUrl = baseUrl.replace(/\/+$/, '');
+      if (!cleanUrl.endsWith('/chat/completions')) {
+        cleanUrl += '/chat/completions';
+      }
+
+      const headers = { 'Content-Type': 'application/json' };
+      if (apiKey) {
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
+
+      const body = {
+        model: model || 'gpt-3.5-turbo',
+        messages: [{ role: 'user', content: 'Hi' }],
+        max_tokens: 5
+      };
+
+      const resp = await fetch(cleanUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => '');
+        return { ok: false, error: `HTTP ${resp.status}: ${errText.slice(0, 100)}` };
+      }
+      return { ok: true };
+    },
+
+    async sendChatStream({ messages, onToken, onError, onFinish }) {
+      const { apiKey, baseUrl, model, temperature } = State.aiConfig;
+      const isLocal = baseUrl && (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1'));
+      if (!apiKey && !isLocal) {
+        throw new Error('未配置 API Key，请先点击右上角设置图标进行配置。');
+      }
+
+      let cleanUrl = baseUrl.replace(/\/+$/, '');
+      if (!cleanUrl.endsWith('/chat/completions')) {
+        cleanUrl += '/chat/completions';
+      }
+
+      const headers = { 'Content-Type': 'application/json' };
+      if (apiKey) {
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
+
+      const body = {
+        model: model || 'deepseek-chat',
+        messages,
+        temperature: temperature ?? 0.7,
+        stream: true
+      };
+
+      const response = await fetch(cleanUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 150)}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith(':')) continue;
+
+          if (trimmed === 'data: [DONE]') {
+            if (onFinish) onFinish();
+            return;
+          }
+
+          if (trimmed.startsWith('data: ')) {
+            try {
+              const json = JSON.parse(trimmed.slice(6));
+              const token = json.choices?.[0]?.delta?.content || '';
+              if (token && onToken) {
+                onToken(token);
+              }
+            } catch (e) {
+              // 忽略个别非合法 JSON 行
+            }
+          }
+        }
+      }
+
+      if (onFinish) onFinish();
+    },
+
+    init() {
+      this.loadConfig();
+
+      const aiPanel = document.getElementById('ai-panel');
+      const btnToggle = document.getElementById('btn-ai-toggle');
+      const btnSettings = document.getElementById('btn-ai-settings');
+      const btnClose = document.getElementById('btn-ai-close');
+      const btnClear = document.getElementById('btn-ai-clear');
+      const btnOpenConfig = document.getElementById('btn-open-ai-config');
+      const btnSend = document.getElementById('btn-ai-send');
+      const inputEl = document.getElementById('ai-input');
+      const chatBody = document.getElementById('ai-chat-body');
+
+      if (!aiPanel) return;
+
+      const togglePanel = () => {
+        aiPanel.classList.toggle('collapsed');
+      };
+
+      if (btnToggle) btnToggle.addEventListener('click', togglePanel);
+      if (btnClose) btnClose.addEventListener('click', () => aiPanel.classList.add('collapsed'));
+      if (btnSettings) btnSettings.addEventListener('click', () => this.openSettingsModal());
+      if (btnOpenConfig) btnOpenConfig.addEventListener('click', () => this.openSettingsModal());
+
+      if (btnClear) {
+        btnClear.addEventListener('click', () => {
+          this.chatHistory = [];
+          chatBody.innerHTML = `
+            <div class="ai-welcome-card" id="ai-welcome-card">
+              <p>👋 你好！我是你的智能笔记助手。</p>
+              <p class="ai-hint">配置你的 API Key 后，我可以帮你总结长文、提炼核心要点、润色修改笔记或解答问题。</p>
+              <button class="btn primary small" id="btn-open-ai-config-renew" style="margin-top:8px">⚙️ 立即配置 API Key</button>
+            </div>
+          `;
+          const renewBtn = document.getElementById('btn-open-ai-config-renew');
+          if (renewBtn) renewBtn.addEventListener('click', () => this.openSettingsModal());
+        });
+      }
+
+      const handleUserSend = (promptText, systemPromptCustom) => {
+        if (this.isGenerating) return;
+        const text = promptText || inputEl.value.trim();
+        if (!text) return;
+
+        const welcome = document.getElementById('ai-welcome-card');
+        if (welcome) welcome.remove();
+
+        const includeNoteContent = document.getElementById('chk-include-note')?.checked;
+        let finalUserContent = text;
+
+        let currentNoteContent = '';
+        if (State.currentId && (dom.mdEditor.value || State.noteContents[State.currentId])) {
+          currentNoteContent = dom.mdEditor.value || State.noteContents[State.currentId];
+        }
+
+        if (includeNoteContent && currentNoteContent.trim()) {
+          finalUserContent = `以下是当前笔记内容：\n---\n${currentNoteContent}\n---\n\n我的需求/问题是：${text}`;
+        }
+
+        this.appendUserMsg(text);
+        if (!promptText) inputEl.value = '';
+
+        const systemPrompt = systemPromptCustom || '你是一个专业、高效的 AI 笔记助手。请用清晰、条理分明且友好的 Markdown 格式回答用户。';
+        const messagesPayload = [
+          { role: 'system', content: systemPrompt },
+          ...this.chatHistory.slice(-6),
+          { role: 'user', content: finalUserContent }
+        ];
+
+        this.chatHistory.push({ role: 'user', content: text });
+
+        const { msgEl, bubbleEl, finish } = this.appendAssistantMsgStream();
+        this.isGenerating = true;
+
+        let fullResponse = '';
+
+        this.sendChatStream({
+          messages: messagesPayload,
+          onToken: (token) => {
+            fullResponse += token;
+            if (typeof marked !== 'undefined') {
+              bubbleEl.innerHTML = marked.parse(fullResponse);
+            } else {
+              bubbleEl.textContent = fullResponse;
+            }
+            chatBody.scrollTop = chatBody.scrollHeight;
+          },
+          onError: (err) => {
+            this.isGenerating = false;
+            bubbleEl.innerHTML = `<span style="color:var(--danger)">请求失败: ${escHtml(err.message || err)}</span>`;
+            finish();
+          },
+          onFinish: () => {
+            this.isGenerating = false;
+            this.chatHistory.push({ role: 'assistant', content: fullResponse });
+            finish(fullResponse);
+          }
+        }).catch(err => {
+          this.isGenerating = false;
+          bubbleEl.innerHTML = `<span style="color:var(--danger)">发送失败: ${escHtml(err.message || err)}</span>`;
+          finish();
+        });
+      };
+
+      if (btnSend) btnSend.addEventListener('click', () => handleUserSend());
+
+      if (inputEl) {
+        inputEl.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleUserSend();
+          }
+        });
+      }
+
+      document.querySelectorAll('.ai-chip-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (aiPanel.classList.contains('collapsed')) {
+            aiPanel.classList.remove('collapsed');
+          }
+          const action = btn.dataset.action;
+          const noteText = dom.mdEditor.value.trim();
+
+          if (!noteText) {
+            toast('当前笔记内容为空，无法进行分析', 'warning');
+            return;
+          }
+
+          if (action === 'summarize') {
+            handleUserSend('请帮我总结当前笔记的完整内容和核心主题。', '你是一个专业的文档摘要助手，请提取文章的核心要点与总结，并使用漂亮的 Markdown 呈现。');
+          } else if (action === 'keypoints') {
+            handleUserSend('请帮我提炼当前笔记的关键要点与行动项 (Action Items)。', '你是一个提炼关键信息的专家，请用 Bullet Points 列表呈现关键要点与待办/行动项。');
+          } else if (action === 'polish') {
+            const selectedText = dom.mdEditor.value.substring(dom.mdEditor.selectionStart, dom.mdEditor.selectionEnd);
+            const targetText = selectedText || noteText;
+            handleUserSend(`请帮我润色修饰以下文本，使其更加流畅、专业、条理清晰：\n\n${targetText}`, '你是一个优秀的文字编辑与文章润色专家。请对文本进行修饰，并给出润色后的版本。');
+          } else if (action === 'proofread') {
+            handleUserSend('请检查当前笔记中的错别字、标点误用或不通顺的句子，并列出修改建议。', '你是一个严谨的文字校对员，请找出文本中的错别字和语法问题，给出逐条修改对比。');
+          }
+        });
+      });
+    },
+
+    appendUserMsg(text) {
+      const chatBody = document.getElementById('ai-chat-body');
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'ai-msg user';
+      msgDiv.innerHTML = `<div class="ai-msg-bubble">${escHtml(text)}</div>`;
+      chatBody.appendChild(msgDiv);
+      chatBody.scrollTop = chatBody.scrollHeight;
+    },
+
+    appendAssistantMsgStream() {
+      const chatBody = document.getElementById('ai-chat-body');
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'ai-msg assistant';
+
+      const bubble = document.createElement('div');
+      bubble.className = 'ai-msg-bubble ai-typing-cursor';
+      bubble.textContent = '思考中...';
+
+      msgDiv.appendChild(bubble);
+      chatBody.appendChild(msgDiv);
+      chatBody.scrollTop = chatBody.scrollHeight;
+
+      const finish = (finalText) => {
+        bubble.classList.remove('ai-typing-cursor');
+        if (finalText) {
+          const actionsDiv = document.createElement('div');
+          actionsDiv.className = 'ai-msg-actions';
+          actionsDiv.innerHTML = `
+            <button class="ai-action-link btn-insert">📥 插入文末</button>
+            <button class="ai-action-link btn-replace">✏️ 替换选中</button>
+            <button class="ai-action-link btn-copy">📋 复制</button>
+          `;
+
+          actionsDiv.querySelector('.btn-insert').addEventListener('click', () => {
+            const ta = dom.mdEditor;
+            ta.focus();
+            _insertTextUndoable(ta, '\n\n---\n### 🤖 AI 智能总结/回答\n' + finalText + '\n');
+            setUnsaved(true);
+            if (State.viewMode !== 'edit') updatePreview();
+            toast('已插入到笔记文末', 'success');
+          });
+
+          actionsDiv.querySelector('.btn-replace').addEventListener('click', () => {
+            const ta = dom.mdEditor;
+            const selStart = ta.selectionStart;
+            const selEnd = ta.selectionEnd;
+            if (selStart !== selEnd) {
+              ta.focus();
+              ta.setSelectionRange(selStart, selEnd);
+              _insertTextUndoable(ta, finalText);
+              setUnsaved(true);
+              if (State.viewMode !== 'edit') updatePreview();
+              toast('已替换选中文本', 'success');
+            } else {
+              toast('请先在编辑器中选中需要替换的文本', 'warning');
+            }
+          });
+
+          actionsDiv.querySelector('.btn-copy').addEventListener('click', () => {
+            navigator.clipboard.writeText(finalText).then(() => {
+              toast('已复制到剪贴板', 'success');
+            }).catch(() => {
+              toast('复制失败', 'danger');
+            });
+          });
+
+          msgDiv.appendChild(actionsDiv);
+        }
+      };
+
+      return { msgEl: msgDiv, bubbleEl: bubble, finish };
+    }
+  };
+
   // ─────────────────────────────────────────
   // INIT
   // ─────────────────────────────────────────
@@ -2714,8 +3212,7 @@ function openNote(id) {
     SyncPanel.init();
     StoragePanel.init();
     MinioPanel.init();
-    loadMinioConfig().catch(() => {});
-
+    AiAssistant.init();
     // Web 端：显示顶部工具栏的「下载桌面版」按钮
     if (!isTauri()) {
       const dlBtn = document.getElementById('btn-download-desktop');

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NoteFlow — 智能笔记</title>
   <link rel="icon" type="image/png" href="favicon.png">
-  <link rel="stylesheet" href="style.css?v=20260507">
+  <link rel="stylesheet" href="style.css?v=20260723-ai">
   <!-- marked.js for Markdown rendering (local) -->
   <script src="lib/marked/marked.min.js"></script>
   <!-- highlight.js for code highlighting (local browser version) -->
@@ -94,7 +94,7 @@
         </svg>
       </button>
       <a id="btn-download-desktop" class="icon-btn" title="下载 Windows 桌面版" style="display:none"
-         href="https://pedometer-dweller-encounter.ngrok-free.dev/noteflow-images/NoteFlow_1.0.1_x64-setup.exe"
+         href="https://pedometer-dweller-encounter.ngrok-free.dev/noteflow-images/NoteFlow_1.0.3_x64-setup.exe"
          download>
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4">
           <!-- 显示器 -->
@@ -109,6 +109,18 @@
           <rect x="10.5" y="15.5" width="3.5" height="2.5" rx="0.3" fill="currentColor" stroke="none" opacity="0.5"/>
         </svg>
       </a>
+      <button id="btn-ai-toggle" class="icon-btn" title="AI 智能助手">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+          <path d="M10 2L11.8 7.2L17 9L11.8 10.8L10 16L8.2 10.8L3 9L8.2 7.2L10 2Z" fill="currentColor" fill-opacity="0.15"/>
+          <path d="M15.5 13.5L16.4 15.6L18.5 16.5L16.4 17.4L15.5 19.5L14.6 17.4L12.5 16.5L14.6 15.6L15.5 13.5Z" fill="currentColor" fill-opacity="0.15"/>
+        </svg>
+      </button>
+      <button id="btn-ai-settings" class="icon-btn" title="AI 配置设置">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="10" cy="10" r="3"/>
+          <path d="M16.2 12.3c.1-.4.2-.9.2-1.3s-.1-.9-.2-1.3l1.8-1.4c.2-.1.2-.4.1-.6l-1.7-3c-.1-.2-.3-.3-.5-.2l-2.1.8c-.5-.4-1.1-.7-1.7-.9L11.6 2.5c0-.2-.2-.4-.5-.4H7.9c-.2 0-.4.2-.5.4L7 4.7c-.6.2-1.2.5-1.7.9l-2.1-.8c-.2-.1-.5 0-.5.2l-1.7 3c-.1.2 0 .5.1.6l1.8 1.4c-.1.4-.2.9-.2 1.3s.1.9.2 1.3L1 14.1c-.2.1-.2.4-.1.6l1.7 3c.1.2.3.3.5.2l2.1-.8c.5.4 1.1.7 1.7.9l.4 2.2c0 .2.2.4.5.4h3.2c.2 0 .4-.2.5-.4l.4-2.2c.6-.2 1.2-.5 1.7-.9l2.1.8c.2.1.5 0 .5-.2l1.7-3c.1-.2 0-.5-.1-.6l-1.8-1.4z"/>
+        </svg>
+      </button>
       <button id="btn-new-note" class="icon-btn primary-btn" title="新建笔记">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
           <line x1="10" y1="4" x2="10" y2="16"/>
@@ -295,9 +307,65 @@
           <div id="img-viewer-wrap">
             <img id="img-viewer" alt="图片预览">
           </div>
-        </div>
       </div>
     </main>
+
+    <!-- AI ASSISTANT PANEL -->
+    <aside id="ai-panel" class="collapsed">
+      <div class="ai-panel-header">
+        <div class="ai-title">
+          <span>✨ AI 智能助手</span>
+          <span class="ai-model-badge" id="ai-status-badge">未配置</span>
+        </div>
+        <div class="ai-header-actions">
+          <button class="icon-btn small" id="btn-ai-clear" title="清空对话">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M2 4h12M5 4V2.5A.5.5 0 0 1 5.5 2h5a.5.5 0 0 1 .5.5V4M6 7v5M10 7v5M3.5 4l.7 9.5a1 1 0 0 0 1 .9h5.6a1 1 0 0 0 1-.9L12.5 4"/>
+            </svg>
+          </button>
+          <button class="icon-btn small" id="btn-ai-close" title="收起面板">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6">
+              <line x1="4" y1="4" x2="12" y2="12"/>
+              <line x1="12" y1="4" x2="4" y2="12"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- 快捷指令栏 -->
+      <div class="ai-quick-bar">
+        <button class="ai-chip-btn" data-action="summarize">📝 全文总结</button>
+        <button class="ai-chip-btn" data-action="keypoints">💡 提炼要点</button>
+        <button class="ai-chip-btn" data-action="polish">✍️ 语言润色</button>
+        <button class="ai-chip-btn" data-action="proofread">🔍 错字检查</button>
+      </div>
+
+      <!-- 聊天对话列表 -->
+      <div id="ai-chat-body">
+        <div class="ai-welcome-card" id="ai-welcome-card">
+          <p>👋 你好！我是你的智能笔记助手。</p>
+          <p class="ai-hint">配置你的 API Key 后，我可以帮你总结长文、提炼核心要点、润色修改笔记或解答问题。</p>
+          <button class="btn primary small" id="btn-open-ai-config" style="margin-top:8px">⚙️ 立即配置 API Key</button>
+        </div>
+      </div>
+
+      <!-- 对话输入区域 -->
+      <div class="ai-input-area">
+        <div class="ai-context-hint">
+          <label style="font-size:12px; color:var(--text-secondary); display:flex; align-items:center; gap:4px; cursor:pointer">
+            <input type="checkbox" id="chk-include-note" checked> 附带当前笔记内容作为上下文
+          </label>
+        </div>
+        <div class="ai-input-wrapper">
+          <textarea id="ai-input" placeholder="输入问题或需求... (Enter 发送)" rows="2"></textarea>
+          <button id="btn-ai-send" class="icon-btn primary-btn" title="发送">
+            <svg viewBox="0 0 20 20" fill="currentColor">
+              <path d="M2.5 17.5L18.5 10L2.5 2.5V8.5L12.5 10L2.5 11.5V17.5Z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </aside>
   </div>
 </div>
 
@@ -461,6 +529,6 @@
   // Web 端适配层（不再依赖 document.write，避免加载时序和 Vercel 拦截问题）
 </script>
 <script src="web-storage.js"></script>
-  <script src="app.js?v=20260514-fix2"></script>
+  <script src="app.js?v=20260723-v103"></script>
 </body>
 </html>
