@@ -2761,6 +2761,7 @@ function openNote(id) {
             <select class="modal-input" id="modal-ai-preset" style="height:34px">
               <option value="custom">自定义 / Custom</option>
               <option value="deepseek">DeepSeek (官方 API)</option>
+              <option value="zhipu">智谱 GLM (智谱清言)</option>
               <option value="openai">OpenAI (官方 API)</option>
               <option value="siliconflow">SiliconFlow 硅基流动</option>
               <option value="kimi">Kimi (Moonshot)</option>
@@ -2853,6 +2854,9 @@ function openNote(id) {
         if (val === 'deepseek') {
           baseInput.value = 'https://api.deepseek.com';
           modelInput.value = 'deepseek-chat';
+        } else if (val === 'zhipu') {
+          baseInput.value = 'https://open.bigmodel.cn/api/paas/v4';
+          modelInput.value = 'glm-4-flash';
         } else if (val === 'openai') {
           baseInput.value = 'https://api.openai.com/v1';
           modelInput.value = 'gpt-4o-mini';
