@@ -3017,43 +3017,65 @@ function openNote(id) {
       } catch (e) {}
 
       if (resizer) {
-        resizer.addEventListener('mousedown', (e) => {
+        const startDrag = (e) => {
+          if (e.type === 'mousedown' && e.button !== 0) return;
           isResizing = true;
-          startX = e.clientX;
+          startX = e.touches ? e.touches[0].clientX : e.clientX;
           startWidth = aiPanel.getBoundingClientRect().width;
           aiPanel.classList.add('is-resizing');
           resizer.classList.add('active');
-          document.body.style.cursor = 'col-resize';
-          document.body.style.userSelect = 'none';
-        });
 
-        document.addEventListener('mousemove', (e) => {
+          // 创建全屏拖拽防护遮罩，防止 Web 端图片/文本选中或 iframe 抢占 mousemove 事件
+          let mask = document.getElementById('resizer-drag-mask');
+          if (!mask) {
+            mask = document.createElement('div');
+            mask.id = 'resizer-drag-mask';
+            mask.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;cursor:col-resize;user-select:none;';
+            document.body.appendChild(mask);
+          } else {
+            mask.style.display = 'block';
+          }
+        };
+
+        const onMove = (e) => {
           if (!isResizing) return;
-          const dx = startX - e.clientX; // 向左拖拽放大，向右拖拽缩小
+          const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+          const dx = startX - clientX; // 向左拖拽扩大 AI 面板，向右缩小
           let newWidth = startWidth + dx;
 
           const minW = 260;
-          const maxW = Math.min(Math.floor(window.innerWidth * 0.7), 750);
+          // 动态保障主编辑区域至少保留 360px 宽度
+          const maxW = Math.max(minW, Math.min(Math.floor(window.innerWidth - 360), 750));
 
           if (newWidth < minW) newWidth = minW;
           if (newWidth > maxW) newWidth = maxW;
 
           aiPanel.style.width = newWidth + 'px';
-        });
+        };
 
-        document.addEventListener('mouseup', () => {
+        const onEnd = () => {
           if (isResizing) {
             isResizing = false;
             aiPanel.classList.remove('is-resizing');
             resizer.classList.remove('active');
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
+            const mask = document.getElementById('resizer-drag-mask');
+            if (mask) mask.style.display = 'none';
+
             const finalW = aiPanel.getBoundingClientRect().width;
             try {
               localStorage.setItem('noteflow_ai_panel_width', Math.round(finalW));
             } catch (e) {}
           }
-        });
+        };
+
+        resizer.addEventListener('mousedown', startDrag);
+        resizer.addEventListener('touchstart', startDrag, { passive: true });
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('touchmove', onMove, { passive: true });
+
+        document.addEventListener('mouseup', onEnd);
+        document.addEventListener('touchend', onEnd);
       }
 
       if (btnClear) {
@@ -3313,6 +3335,15 @@ function openNote(id) {
       const wrap  = dom.mdPreviewWrap;
       wrap.scrollTop = ratio * (wrap.scrollHeight - wrap.clientHeight);
     });
+
+    // Toolbar horizontal wheel scroll
+    if (dom.editorToolbar) {
+      dom.editorToolbar.addEventListener('wheel', (e) => {
+        if (e.deltaY !== 0) {
+          dom.editorToolbar.scrollLeft += e.deltaY;
+        }
+      }, { passive: true });
+    }
   }
 
   init();
