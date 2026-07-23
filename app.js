@@ -2761,6 +2761,7 @@ function openNote(id) {
             <select class="modal-input" id="modal-ai-preset" style="height:34px">
               <option value="custom">自定义 / Custom</option>
               <option value="deepseek">DeepSeek (官方 API)</option>
+              <option value="zhipu">智谱 GLM (智谱清言)</option>
               <option value="openai">OpenAI (官方 API)</option>
               <option value="siliconflow">SiliconFlow 硅基流动</option>
               <option value="kimi">Kimi (Moonshot)</option>
@@ -2853,6 +2854,9 @@ function openNote(id) {
         if (val === 'deepseek') {
           baseInput.value = 'https://api.deepseek.com';
           modelInput.value = 'deepseek-chat';
+        } else if (val === 'zhipu') {
+          baseInput.value = 'https://open.bigmodel.cn/api/paas/v4';
+          modelInput.value = 'glm-4-flash';
         } else if (val === 'openai') {
           baseInput.value = 'https://api.openai.com/v1';
           modelInput.value = 'gpt-4o-mini';
@@ -2995,6 +2999,84 @@ function openNote(id) {
       if (btnClose) btnClose.addEventListener('click', () => aiPanel.classList.add('collapsed'));
       if (btnSettings) btnSettings.addEventListener('click', () => this.openSettingsModal());
       if (btnOpenConfig) btnOpenConfig.addEventListener('click', () => this.openSettingsModal());
+
+      // 拖拽改变 AI 面板与主面板的大小 (Resizable Divider)
+      const resizer = document.getElementById('ai-resizer');
+      let isResizing = false;
+      let startX = 0;
+      let startWidth = 340;
+
+      try {
+        const savedW = localStorage.getItem('noteflow_ai_panel_width');
+        if (savedW) {
+          const w = parseInt(savedW, 10);
+          if (w >= 240 && w <= 800) {
+            aiPanel.style.width = w + 'px';
+          }
+        }
+      } catch (e) {}
+
+      if (resizer) {
+        const startDrag = (e) => {
+          if (e.type === 'mousedown' && e.button !== 0) return;
+          isResizing = true;
+          startX = e.touches ? e.touches[0].clientX : e.clientX;
+          startWidth = aiPanel.getBoundingClientRect().width;
+          aiPanel.classList.add('is-resizing');
+          resizer.classList.add('active');
+
+          // 创建全屏拖拽防护遮罩，防止 Web 端图片/文本选中或 iframe 抢占 mousemove 事件
+          let mask = document.getElementById('resizer-drag-mask');
+          if (!mask) {
+            mask = document.createElement('div');
+            mask.id = 'resizer-drag-mask';
+            mask.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;cursor:col-resize;user-select:none;';
+            document.body.appendChild(mask);
+          } else {
+            mask.style.display = 'block';
+          }
+        };
+
+        const onMove = (e) => {
+          if (!isResizing) return;
+          const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+          const dx = startX - clientX; // 向左拖拽扩大 AI 面板，向右缩小
+          let newWidth = startWidth + dx;
+
+          const minW = 260;
+          // 动态保障主编辑区域至少保留 360px 宽度
+          const maxW = Math.max(minW, Math.min(Math.floor(window.innerWidth - 360), 750));
+
+          if (newWidth < minW) newWidth = minW;
+          if (newWidth > maxW) newWidth = maxW;
+
+          aiPanel.style.width = newWidth + 'px';
+        };
+
+        const onEnd = () => {
+          if (isResizing) {
+            isResizing = false;
+            aiPanel.classList.remove('is-resizing');
+            resizer.classList.remove('active');
+            const mask = document.getElementById('resizer-drag-mask');
+            if (mask) mask.style.display = 'none';
+
+            const finalW = aiPanel.getBoundingClientRect().width;
+            try {
+              localStorage.setItem('noteflow_ai_panel_width', Math.round(finalW));
+            } catch (e) {}
+          }
+        };
+
+        resizer.addEventListener('mousedown', startDrag);
+        resizer.addEventListener('touchstart', startDrag, { passive: true });
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('touchmove', onMove, { passive: true });
+
+        document.addEventListener('mouseup', onEnd);
+        document.addEventListener('touchend', onEnd);
+      }
 
       if (btnClear) {
         btnClear.addEventListener('click', () => {
@@ -3253,6 +3335,15 @@ function openNote(id) {
       const wrap  = dom.mdPreviewWrap;
       wrap.scrollTop = ratio * (wrap.scrollHeight - wrap.clientHeight);
     });
+
+    // Toolbar horizontal wheel scroll
+    if (dom.editorToolbar) {
+      dom.editorToolbar.addEventListener('wheel', (e) => {
+        if (e.deltaY !== 0) {
+          dom.editorToolbar.scrollLeft += e.deltaY;
+        }
+      }, { passive: true });
+    }
   }
 
   init();
