@@ -2697,63 +2697,7 @@ function openNote(id) {
     }
   }
 
-  // ─────────────────────────────────────────
-  // INIT
-  // ─────────────────────────────────────────
-  async function init() {
-    console.log('[NoteFlow] init() started, JS version: 2026-05-04');
-    await loadFromStorage();
-    setupCloseGuard();
 
-    // 检查是否有紧急备份需要恢复（上次非正常关闭的自动保存）
-    if (window._checkEmergencyBackup) {
-      await window._checkEmergencyBackup();
-    }
-
-    applyTheme(State.theme);
-    renderSidebar();
-
-    // 移动端：默认折叠侧边栏
-    if (window.innerWidth <= 768) {
-      dom.sidebar.classList.add('collapsed');
-    }
-    SyncPanel.init();
-    StoragePanel.init();
-    MinioPanel.init();
-    loadMinioConfig().catch(() => {});
-
-    // Web 端：显示顶部工具栏的「下载桌面版」按钮
-    if (!isTauri()) {
-      const dlBtn = document.getElementById('btn-download-desktop');
-      if (dlBtn) dlBtn.style.display = '';
-    }
-
-    let launched = false;
-    if (isTauri()) {
-      try {
-        const path = await invoke('get_launch_file');
-        if (path) {
-          await importAndOpenPath(path);
-          launched = true;
-        }
-      } catch (e) {
-        console.error('get_launch_file failed:', e);
-      }
-    }
-
-    if (!launched && State.notes.length > 0) {
-      openNote(State.notes[0].id);
-    }
-
-    if (isTauri() && window.__TAURI__ && window.__TAURI__.event) {
-      window.__TAURI__.event.listen('single-instance', (event) => {
-        const payload = event.payload; // { args: [...], cwd: "..." }
-        if (payload && payload.args && payload.args.length > 1) {
-          const path = payload.args[1];
-          importAndOpenPath(path);
-        }
-      });
-    }
 
   // ─────────────────────────────────────────
   // AI ASSISTANT MODULE
@@ -3261,6 +3205,48 @@ function openNote(id) {
     StoragePanel.init();
     MinioPanel.init();
     AiAssistant.init();
-    loadMinioConfig().catch(() => {});
+    // Web 端：显示顶部工具栏的「下载桌面版」按钮
+    if (!isTauri()) {
+      const dlBtn = document.getElementById('btn-download-desktop');
+      if (dlBtn) dlBtn.style.display = '';
+    }
+
+    let launched = false;
+    if (isTauri()) {
+      try {
+        const path = await invoke('get_launch_file');
+        if (path) {
+          await importAndOpenPath(path);
+          launched = true;
+        }
+      } catch (e) {
+        console.error('get_launch_file failed:', e);
+      }
+    }
+
+    if (!launched && State.notes.length > 0) {
+      openNote(State.notes[0].id);
+    }
+
+    if (isTauri() && window.__TAURI__ && window.__TAURI__.event) {
+      window.__TAURI__.event.listen('single-instance', (event) => {
+        const payload = event.payload; // { args: [...], cwd: "..." }
+        if (payload && payload.args && payload.args.length > 1) {
+          const path = payload.args[1];
+          importAndOpenPath(path);
+        }
+      });
+    }
+
+    // Scroll sync
+    dom.mdEditor.addEventListener('scroll', () => {
+      if (State.viewMode !== 'split') return;
+      const ratio = dom.mdEditor.scrollTop / (dom.mdEditor.scrollHeight - dom.mdEditor.clientHeight);
+      const wrap  = dom.mdPreviewWrap;
+      wrap.scrollTop = ratio * (wrap.scrollHeight - wrap.clientHeight);
+    });
+  }
+
+  init();
 
 })();
