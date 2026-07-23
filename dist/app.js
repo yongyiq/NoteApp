@@ -256,8 +256,10 @@
   // ─────────────────────────────────────────
   // DEFAULT CONTENT
   // ─────────────────────────────────────────
-  const welcomeMd = `# 欢迎使用 NoteFlow
-
+  const welcomeMd = `# 欢迎使用 NoteFlow 
+# Web链接：https://noteflow.rth1.xyz/ (内含windows桌面版安装包)
+# 海外版Web链接：https://note-app-coral-seven.vercel.app/
+# github连接：https://github.com/yongyiq/NoteApp
 NoteFlow 是一款支持 **Markdown 渲染**、**PDF 查看**和**图片预览**的智能笔记软件。
 
 ## 功能特色
@@ -277,7 +279,7 @@ NoteFlow 是一款支持 **Markdown 渲染**、**PDF 查看**和**图片预览**
 
 \`\`\`javascript
 function greet(name) {
-  return \`Hello, ${name}!\`;
+  return \`Hello, \${name}!\`;
 }
 console.log(greet('NoteFlow'));
 \`\`\`
@@ -304,6 +306,12 @@ console.log(greet('NoteFlow'));
 | \`Ctrl+D\` | 删除当前行 |
 
 ---
+## NoteFlow 的设计逻辑是 **导入/克隆** 机制，而非“直接编辑源文件”：
+
+
+1. 列表项导入时：当您将 .md 文件拖入或导入软件时，NoteFlow 会读取该文件里的文本内容，然后在软件的私有数据目录中，为它单独创建一个专属的新笔记文件（格式为 notes/{笔记ID}.json）。
+2. 编辑时：您在软件里做出的所有修改，都会实时保存到软件内部的私有数据目录中（并在配置了同步后自动同步到云端的 GitHub/Gitee 仓库），完全不会影响或修改您电脑上原本那个位置的源文件。
+3. 如果您需要将修改后的笔记重新保存到电脑的某个地方，可以使用右键菜单中的 **导出** 功能，将它以 .md 文件的形式另存出来。
 
 *开始创作你的第一篇笔记吧！*
 `;
